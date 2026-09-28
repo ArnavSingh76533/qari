@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -61,15 +64,42 @@ class StreamingRecitationService {
   /// "capture error: ..."). Surfaced live in the diag line.
   String? _nativeStatus;
 
-  /// Buffered PCM16 audio that is flushed to the socket on a fixed cadence
-  /// (see [_flushInterval]) so each WS message carries a real, non-empty chunk
-  /// (fixes the earlier "0s duration" payload bug and avoids chatty micro-frames).
-  final BytesBuilder _audioBuffer = BytesBuilder();
+  /// Buffered PCM16 audio. Frames are cut on SIZE, not on a timer: whenever at
+  /// least [_pcmFrameBytes] bytes are available they are sent IMMEDIATELY as one
+  /// frame (see [_pumpFrames]).
+  ///
+  /// The previous implementation accumulated everything and flushed the whole
+  /// buffer on a 250 ms timer, which shipped 250 ms-plus blobs (and, with a
+  /// slower native cadence, 1-2 s blobs) — that client-side buffering was
+  /// added straight on top of the server's own analysis window and showed up as
+  /// "the words appear long after I said them". The backend needs a steady
+  /// 100 ms cadence, not batched audio.
+  /// Pending PCM16 bytes not yet framed.
+  ///
+  /// A plain growable list (not a [BytesBuilder]) because the pump needs to cut
+  /// an EXACT [_pcmFrameBytes] slice and keep the remainder; BytesBuilder can
+  /// only hand back everything it holds. At 3200-byte frames the copying here
+  /// is negligible compared with a Whisper decode.
+  final List<int> _pendingAudio = <int>[];
+
+  /// One frame of PCM16 mono 16 kHz audio = 100 ms.
+  /// 16000 samples/s x 2 bytes x 0.1 s = 3200 bytes.
+  static const int _pcmFrameBytes = 3200;
+
+  /// Safety-net timer. Frames are normally cut the instant they are complete, so
+  /// this only exists to release a PARTIAL trailing frame (a 40 ms tail would
+  /// otherwise sit in the buffer). It is deliberately short so it can never
+  /// become the thing that batches the stream.
   Timer? _flushTimer;
-  // Buffered PCM16 is flushed to the socket every 250ms so each WS frame
-  // carries a real, non-empty audio window (fixes the earlier "0s duration"
-  // payload bug and keeps the ASR fed continuously).
-  static const Duration _flushInterval = Duration(milliseconds: 250);
+  static const Duration _flushInterval = Duration(milliseconds: 100);
+
+  /// Exposed for the framing contract test so the shipped constants (not a
+  /// duplicated copy in the test) are what gets asserted.
+  @visibleForTesting
+  static int get pcmFrameBytesForTest => _pcmFrameBytes;
+
+  @visibleForTesting
+  static Duration get flushIntervalForTest => _flushInterval;
 
   final StreamController<RecitationStreamEvent> _events =
       StreamController<RecitationStreamEvent>.broadcast();
@@ -283,7 +313,9 @@ class StreamingRecitationService {
       },
     );
 
-    // --- Chunked upload: emit buffered audio every 250ms ---
+    // --- Chunked upload: size-driven 100 ms frames -------------------------
+    // The timer is only a partial-tail safety net; complete frames are sent by
+    // _pumpFrames the moment they form (see _onNativeAudio).
     _flushTimer = Timer.periodic(_flushInterval, (_) {
       _flushAudio();
     });
@@ -403,11 +435,15 @@ class StreamingRecitationService {
     _chunkCount++;
     _firstChunkAt ??= DateTime.now();
     if (chunk.isNotEmpty) {
-      _audioBuffer.add(chunk);
+      _pendingAudio.addAll(chunk);
+      // Send every COMPLETE 100 ms frame right now. This is the whole point of
+      // the fix: the server starts working on audio ~100 ms after it is spoken
+      // instead of after an arbitrary client-side batching window.
+      _pumpFrames();
     }
     if (_chunkCount <= 5 || _chunkCount % 50 == 0) {
       debugPrint('[Streaming] mic chunk #$_chunkCount '
-          'len=${chunk.length} bytes (buffered=${_audioBuffer.length})');
+          'len=${chunk.length} bytes (pending=${_pendingAudio.length})');
     }
     try {
       _emitAmplitude(chunk);
@@ -418,22 +454,38 @@ class StreamingRecitationService {
     }
   }
 
-  /// Sends any buffered PCM16 audio to the server as a single binary frame.
-  /// Flushing on a fixed cadence (not per raw microphone chunk) guarantees the
-  /// server receives non-empty, real-duration windows.
-  void _flushAudio() {
-    if (_audioBuffer.isEmpty) return;
+  /// Cuts and sends every COMPLETE [_pcmFrameBytes] frame sitting in the
+  /// buffer, immediately. Any remainder (< one frame) is deliberately left for
+  /// the safety-net timer so a partial tail is still delivered promptly.
+  void _pumpFrames() {
     final sock = _socket;
-    if (sock != null && sock.readyState == WebSocket.open) {
-      final frame = Uint8List.fromList(_audioBuffer.takeBytes());
+    if (sock == null || sock.readyState != WebSocket.open) return;
+    while (_pendingAudio.length >= _pcmFrameBytes) {
+      final frame = Uint8List.fromList(_pendingAudio.sublist(0, _pcmFrameBytes));
+      _pendingAudio.removeRange(0, _pcmFrameBytes);
       _totalSentBytes += frame.length;
       sock.add(frame);
-      debugPrint('[Streaming] FLUSH #$_chunkCount -> sent ${frame.length} bytes '
+    }
+  }
+
+  /// Safety-net flush: releases any PARTIAL trailing frame the size-driven pump
+  /// could not send, so the last few tens of milliseconds before a stop are not
+  /// stranded. Never used to batch a normal stream.
+  void _flushAudio() {
+    _pumpFrames();
+    if (_pendingAudio.isEmpty) return;
+    final sock = _socket;
+    if (sock != null && sock.readyState == WebSocket.open) {
+      final frame = Uint8List.fromList(_pendingAudio);
+      _pendingAudio.clear();
+      _totalSentBytes += frame.length;
+      sock.add(frame);
+      debugPrint('[Streaming] TAIL FLUSH -> sent ${frame.length} bytes '
           '(totalSent=$_totalSentBytes)');
     } else {
-      debugPrint('[Streaming] FLUSH skipped: socket not open '
-          '(state=${_state.name}, buffered=${_audioBuffer.length})');
-      _audioBuffer.clear();
+      debugPrint('[Streaming] TAIL FLUSH skipped: socket not open '
+          '(state=${_state.name}, pending=${_pendingAudio.length})');
+      _pendingAudio.clear();
     }
   }
 
@@ -554,7 +606,7 @@ class StreamingRecitationService {
   Future<void> cancel() async {
     _pingTimer?.cancel();
     _flushTimer?.cancel();
-    _audioBuffer.clear();
+    _pendingAudio.clear();
     await _audioSub?.cancel();
     _audioSub = null;
     await _statusSub?.cancel();

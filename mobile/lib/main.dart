@@ -212,9 +212,14 @@ class _QariAppState extends ConsumerState<QariApp> {
     if (decision == null || !mounted) return;
     _updateShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      // This State's `context` sits ABOVE the MaterialApp/Navigator it builds,
+      // so showDialog(context: context) cannot find a Navigator and fails
+      // silently — the OTA update dialog never appeared. Use the navigator's
+      // own context instead (it is below MaterialApp by definition).
+      final navContext = _navigatorKey.currentState?.context;
+      if (navContext == null || !navContext.mounted) return;
       showDialog(
-        context: context,
+        context: navContext,
         barrierDismissible: !decision.mandatory,
         builder: (_) => AppUpdateDialog(
           service: _updateService,

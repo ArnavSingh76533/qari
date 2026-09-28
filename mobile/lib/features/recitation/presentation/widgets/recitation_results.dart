@@ -358,6 +358,12 @@ class _SubScoreCard extends StatelessWidget {
   }
 }
 
+/// Clean, continuous Mushaf flow for the results screen.
+///
+/// Deliberately NOT a grid of red/green cards: the reciter reads their result as
+/// ordinary Mushaf text, and only words with a VERIFIED mistake carry a red
+/// underline. Correct words are plain book ink — no green wash — so the page
+/// still looks like a Mushaf rather than a dashboard.
 class _WordByWordDisplay extends StatelessWidget {
   final RecitationResult result;
   final List<String> ayahWords;
@@ -373,8 +379,26 @@ class _WordByWordDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Index the verdicts by their word position so the flow can look up "is
+    // this word wrong?" without assuming the two lists are the same length.
+    final mistakes = <int, WordVerdict>{};
+    for (final v in result.wordVerdicts) {
+      if (!v.isCorrect && v.wordIndex >= 0) mistakes[v.wordIndex] = v;
+    }
+
+    // Prefer the canonical Quranic text (which carries full tashkeel) over the
+    // verdict's own `word` field, which may be the normalized ASR key.
+    final words = ayahWords.isNotEmpty
+        ? ayahWords
+        : result.wordVerdicts.map((v) => v.displayWord(ayahWords)).toList();
+
+    final mistakeColor = theme.colorScheme.error;
+    final ink = theme.brightness == Brightness.dark
+        ? const Color(0xFFE8E2D4)
+        : const Color(0xFF1A1A1A);
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -385,55 +409,80 @@ class _WordByWordDisplay extends StatelessWidget {
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Wrap(
-          alignment: WrapAlignment.center,
+          alignment: WrapAlignment.start,
+          crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 4,
           runSpacing: 12,
-          children: result.wordVerdicts.map((verdict) {
-            final isCorrect = verdict.isCorrect;
-            final color = isCorrect ? Colors.green : Colors.red;
-
-            return GestureDetector(
-              onTap: isCorrect
-                  ? null
-                  : () async {
-                      await Haptics.vibrate(HapticsType.medium);
-                      onWordTapped(verdict);
-                    },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      verdict.displayWord(ayahWords),
-                      style: AppTheme.arabicTextStyle(
-                        fontSize: 26,
-                        color: color,
-                      ),
-                    ),
-                    if (!isCorrect) ...[
-                      const SizedBox(height: 2),
-                      Icon(
-                        Icons.touch_app_rounded,
-                        size: 12,
-                        color: color.withValues(alpha: 0.5),
-                      ),
-                    ],
-                  ],
-                ),
+          children: [
+            for (var i = 0; i < words.length; i++)
+              _ResultWord(
+                text: words[i],
+                mistake: mistakes[i],
+                ink: ink,
+                mistakeColor: mistakeColor,
+                fontSize: 26,
+                onTap: mistakes[i] == null
+                    ? null
+                    : () async {
+                        await Haptics.vibrate(HapticsType.medium);
+                        onWordTapped(mistakes[i]!);
+                      },
               ),
-            ).animate().fadeIn(
-                  delay: Duration(milliseconds: verdict.wordIndex * 100),
-                  duration: 300.ms,
-                );
-          }).toList(),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// One word in the results flow. Mistaken words get a red underline and stay
+/// tappable so the user can open the per-word audio breakdown; everything else
+/// is plain book ink.
+class _ResultWord extends StatelessWidget {
+  final String text;
+  final WordVerdict? mistake;
+  final Color ink;
+  final Color mistakeColor;
+  final double fontSize;
+  final VoidCallback? onTap;
+
+  const _ResultWord({
+    required this.text,
+    required this.mistake,
+    required this.ink,
+    required this.mistakeColor,
+    required this.fontSize,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isMistake = mistake != null;
+    final word = Text(
+      text,
+      style: AppTheme.arabicTextStyle(
+        fontSize: fontSize,
+        color: isMistake ? mistakeColor : ink,
+        // A clean red underline reads as a correction mark; a squiggle would
+        // look like a spell-checker error in a book of scripture.
+        decoration: isMistake ? TextDecoration.underline : TextDecoration.none,
+        decorationColor: mistakeColor,
+        decorationThickness: 2,
+      ),
+    );
+
+    final content =
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: word);
+    if (!isMistake) return content;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        decoration: BoxDecoration(
+          color: mistakeColor.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: content,
       ),
     );
   }

@@ -132,22 +132,25 @@ def test_stream_silence_does_not_auto_complete_ayah(stub_stream):
         # Send 10 seconds of SILENT audio — well past the threshold that would
         # normally reveal all 4 words via the stub.
         ws.send_bytes(_pcm_seconds(10.0, silent=True))
-        # No word events should arrive. Drain with a short timeout.
+        # Stop first, then drain: with silence the server emits NO word event, so
+        # draining before `stop` would block forever on receive_json().
+        ws.send_json({"type": "stop"})
         word_events = []
+        final = None
         try:
             while True:
                 evt = ws.receive_json()
                 if evt.get("type") == "word":
                     word_events.append(evt)
                 if evt.get("type") == "final":
+                    final = evt
                     break
         except Exception:
             pass  # no more events (timeout / connection close)
         assert word_events == [], (
             f"Silence should not reveal words, got {len(word_events)} events"
         )
-        ws.send_json({"type": "stop"})
-        final = _recv_until(ws, "final")
+        assert final is not None
         verdicts = final["result"]["word_verdicts"]
         assert len(verdicts) == 4
         # All words should be skipped (none recited).
@@ -251,6 +254,17 @@ def test_real_transcriber_uses_bounded_window(monkeypatch):
         if calls["n"] == 1:
             return ["بسم", "الله"], [0.9, 0.9]
         return ["الله", "الرحمن"], [0.9, 0.9]
+
+    # The live pipeline corroborates the prompted decode against the INDEPENDENT
+    # (unprompted) verification decode. Stub that too — otherwise the real base
+    # model runs against the synthetic tone, its garbage output fails
+    # corroboration and the hypothesis is replaced by that garbage. It returns
+    # the superset so every prompted word is corroborated.
+    monkeypatch.setattr(
+        ss,
+        "_independent_transcriber",
+        lambda audio, sr: (["بسم", "الله", "الرحمن"], [0.9, 0.9, 0.9]),
+    )
 
     import asyncio
     import math

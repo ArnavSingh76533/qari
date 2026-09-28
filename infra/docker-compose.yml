@@ -6,8 +6,7 @@ services:
       POSTGRES_USER: qari
       POSTGRES_PASSWORD: qari
       POSTGRES_DB: qari
-    ports:
-      - "5432:5432"
+    # No host port publish — only the compose network needs it (localhost-only DB).
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port publish — only the compose network needs it.
     volumes:
       - redisdata:/data
     healthcheck:
@@ -34,13 +32,15 @@ services:
       context: ../backend
       dockerfile: core_api/Dockerfile
     restart: unless-stopped
+    # Host port 8000 is taken by another service on this VPS — publish
+    # core-api on 127.0.0.1:8010 (host nginx proxies /v1/ here).
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8010:8000"
     environment:
       QARI_DATABASE_URL: postgresql+asyncpg://qari:qari@postgres:5432/qari
       QARI_REDIS_URL: redis://redis:6379/0
       QARI_ENVIRONMENT: dev
-      QARI_CORS_ORIGINS: '["http://137.23.42.171"]'
+      QARI_CORS_ORIGINS: '["https://qari.pneumetron.com"]'
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,18 +57,35 @@ services:
       context: ../backend/recitation_api
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "8001:8001"
     environment:
       QARI_REDIS_URL: redis://redis:6379/1
       QARI_CORE_API_BASE_URL: http://core-api:8000
       QARI_ENVIRONMENT: dev
-      QARI_CORS_ORIGINS: '["http://137.23.42.171"]'
-      QARI_RECITATION_API_PUBLIC_URL: https://137.23.42.171
+      QARI_CORS_ORIGINS: '["https://qari.pneumetron.com"]'
+      QARI_RECITATION_API_PUBLIC_URL: https://qari.pneumetron.com
       PYTHONPATH: /app
       QARI_ML_USE_STUB: "false"
-      QARI_FASTERWHISPER_MODEL_DIR: /app/models/qari-ct2-tiny-robust-v2
+      # Trained Qari V50 model (LoRA merged + CT2 INT8, built from local files).
+      QARI_FASTERWHISPER_MODEL_DIR: /app/models/qari-v50-ct2
+      # Independent (UNPROMPTED) verification model. The V50 adapter is an
+      # ORACLE model that reproduces the expected text it is prompted with, so
+      # it cannot validate a recitation — this base Quran ASR model, decoded
+      # with NO prompt, is the honest witness of what was actually said.
+      QARI_FASTERWHISPER_VERIFY_MODEL_DIR: /app/models/qari-ct2-base
+      # 2 threads per decode: tier-1 (prompted) and tier-2 (unprompted) run
+      # CONCURRENTLY, so 2+2 = all 4 cores (wall time = max, not sum).
+      QARI_FASTERWHISPER_THREADS: "2"
+      # Which decode feeds the LIVE word reveal: "tier2" = the independent
+      # unprompted witness (honest), "corroborated" = the prompt-conditioned
+      # Qari model where the witness agrees (more coverage, some over-reveal).
+      QARI_EVIDENCE_POLICY: "tier2"
+      # Verbose live per-pass diagnostics (tier-1/tier-2 words, matcher cursor).
+      # Set to "1" when debugging a live tracking problem.
+      QARI_STREAM_DEBUG: "0"
       QARI_REFERENCE_DATA_DIR: /app/reference_data
+      # Strict offline: model loads ONLY from local files/volumes.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     depends_on:
       redis:
         condition: service_healthy
@@ -78,6 +95,8 @@ services:
       - ../ml:/app/ml
       - ../backend/recitation_api/reference_data:/app/reference_data:ro
       - ${QARI_MODELS_DIR:-../models}:/app/models:ro
+    ports:
+      - "127.0.0.1:8001:8001"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 1
 
   inference-worker:
@@ -91,10 +110,14 @@ services:
       QARI_ML_USE_STUB: "false"
       QARI_REFERENCE_DATA_DIR: /app/reference_data
       QARI_CORE_API_BASE_URL: http://core-api:8000
-      QARI_RECITATION_API_PUBLIC_URL: https://137.23.42.171
-      QARI_FASTERWHISPER_MODEL_DIR: /app/models/qari-ct2-tiny-robust-v2
+      QARI_RECITATION_API_PUBLIC_URL: https://qari.pneumetron.com
+      # Trained Qari V50 model (LoRA merged + CT2 INT8, built from local files).
+      QARI_FASTERWHISPER_MODEL_DIR: /app/models/qari-v50-ct2
       QARI_BATCH_ANALYSIS_TIMEOUT_SEC: "90"
       PYTHONPATH: /app
+      # Strict offline: model loads ONLY from local files/volumes.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     depends_on:
       redis:
         condition: service_healthy
@@ -111,34 +134,10 @@ services:
       timeout: 5s
       retries: 3
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: qari
-      MINIO_ROOT_PASSWORD: qari12345
-    command: server /data --console-address ":9001"
-    volumes:
-      - miniodata:/data
-
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - core-api
-      - recitation-api
+# TLS terminates at Cloudflare (qari.pneumetron.com) → host nginx (:80)
+# → these services. No container nginx / minio needed on this VPS.
 
 volumes:
   pgdata:
   redisdata:
-  miniodata:
   qari_audio:

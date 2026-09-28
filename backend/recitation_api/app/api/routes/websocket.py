@@ -84,8 +84,16 @@ async def recitation_stream(websocket: WebSocket):
 
     server → client (as words resolve)::
 
-        {"type": "word", "word_index": i, "status": "matched"|"error"|"skipped",
-         "expected": ..., "spoken": ..., "timestamp_ms": ...}
+        {"type": "word", "session_id": ..., "word_id": n, "word_index": i,
+         "status": "match"|"error_skipped",   # NOT "matched"/"error"/"skipped"
+         "expected": ..., "spoken": ..., "confidence": 0.0-1.0,
+         "timestamp_ms": ...}
+
+    NB the ``status`` values are the BLUEPRINT contract and are exactly two:
+    ``match`` (correctly revealed) and ``error_skipped`` (skipped or
+    mispronounced), keyed by the 1-BASED ``word_id``. An earlier version of this
+    docstring advertised ``matched``/``error``/``skipped``, which the server has
+    never emitted — a client written against it would mis-colour every word.
 
     client → server: ``{"type": "stop"}`` (or disconnect) → server replies with
     ``{"type": "final", "result": <RecitationAnalysisResult>}`` and closes.

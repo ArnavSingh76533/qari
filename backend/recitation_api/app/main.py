@@ -1,6 +1,7 @@
 """FastAPI application for the Qari recitation_api service."""
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator
@@ -80,12 +81,26 @@ def _speech_activity_seconds(
 
 
 class _ConservativeLiveMatcher:
-    """Trust-first matcher used only for production live UI tracking.
+    """Production live matcher: DP word alignment bounded by speech duration.
 
-    Live mode advances only when an ASR token matches the *next* expected word.
-    Unmatched tokens are ignored instead of marking Quran words as errors or
-    skipping ahead. Detailed errors are still produced at final review by a
-    fresh standard matcher.
+    Two independent guards keep the live reveal honest and in sync with the
+    voice:
+
+    * **Alignment** delegates to ``StreamingMatcher``'s live DP aligner (anchor +
+      local window, Needleman-Wunsch — the approach Tarteel documents for its own
+      app). The previous implementation here walked ASR tokens one at a time with
+      ``lookahead=0``, consuming every unmatched token as noise: as soon as the
+      expected word's own token was missing (window-cut fragment, mangled
+      article, a swallowed word) it ate everything after it and NEVER advanced
+      again, so the reveal froze for the rest of the surah (verified live at the
+      ayah-6 -> 7 boundary: cursor pinned at 20/29 while the user kept
+      reciting). The DP re-aligns the recent window every pass and skips past a
+      lost word instead of jamming.
+    * **Budget**: ``max_live_words`` caps the reveal at the number of words that
+      could have been spoken in the measured active-speech time, so an ASR
+      continuation can never highlight text the user has not recited yet.
+
+    Detailed errors are still produced at final review by a fresh matcher.
     """
 
     def __init__(self, reference_words: list[str]) -> None:
@@ -97,43 +112,31 @@ class _ConservativeLiveMatcher:
         self._cursor = 0
         self._hyp_cursor = 0
         self._states = []
-        self._delegate = StreamingMatcher(self.reference, lookahead=0)
+        self._delegate = StreamingMatcher(self.reference)
+
+    @property
+    def _stall_passes(self) -> int:
+        return getattr(self._delegate, "_stall_passes", 0)
+
+    @property
+    def _last_dp_debug(self):
+        return getattr(self._delegate, "_last_dp_debug", {})
 
     def evaluate(self, hypothesis_words, confidences=None, *, full=False):
-        from ml.alignment.streaming_matcher import WordState, WordStatus
-
         limit = min(len(self.reference), max(0, int(self.max_live_words)))
-        j = min(self._hyp_cursor, len(hypothesis_words))
-
-        while j < len(hypothesis_words) and self._cursor < limit:
-            spoken = hypothesis_words[j]
-            confidence = (
-                float(confidences[j])
-                if confidences is not None and j < len(confidences)
-                else 1.0
-            )
-            expected = self.reference[self._cursor]
-
-            if (
-                confidence >= _LIVE_MIN_WORD_CONFIDENCE
-                and self._delegate._is_match(spoken, expected)
-            ):
-                self._states.append(
-                    WordState(
-                        index=self._cursor,
-                        expected=expected,
-                        status=WordStatus.MATCHED,
-                        spoken=spoken,
-                        confidence=confidence,
-                    )
-                )
-                self._cursor += 1
-            # Consume every current ASR token. A guessed continuation beyond the
-            # speech-duration cap must not become eligible on a later tick merely
-            # because more wall-clock time passed.
-            j += 1
-
-        self._hyp_cursor = len(hypothesis_words)
+        delegate = self._delegate
+        # Enforce the speech-duration budget by restricting the reference the
+        # aligner may see: words beyond the budget are unreachable, so they can
+        # never resolve (and can never be jumped to by a mis-alignment).
+        saved_reference = delegate.reference
+        delegate.reference = self.reference[:limit]
+        try:
+            states = delegate._evaluate_live(hypothesis_words, confidences)
+        finally:
+            delegate.reference = saved_reference
+        self._cursor = delegate._cursor
+        self._hyp_cursor = delegate._hyp_cursor
+        self._states = [state for state in states if state.index < limit]
         return list(self._states)
 
     def finalize(self, hypothesis_words, confidences=None):
@@ -329,10 +332,42 @@ RECITATION_COMPLETED = Counter(
 )
 
 
+def _warmup_ml() -> None:
+    """Pre-load the reference store + ASR models in a background thread.
+
+    Removes the cold-start penalty from the FIRST live session. Without this the
+    first ``load_reference()`` pays the ``ReferenceStore`` disk build (~0.6s) and
+    the first transcription pass pays the model loads (~0.8s), so the user taps
+    start and stares at a frozen screen for a second or more. Runs off the event
+    loop so ``/health`` and app readiness are NOT delayed.
+    """
+    try:
+        from app.services.streaming_session import _get_reference_store
+
+        _get_reference_store()
+        logger.info("warmup.refstore_done")
+    except Exception as exc:  # pragma: no cover - optional ml deps
+        logger.debug("warmup.refstore_failed", error=str(exc))
+    try:
+        from ml.inference.faster_whisper_transcriber import get_transcriber
+
+        transcriber = get_transcriber()
+        transcriber.load()  # primary (prompted / V50) model
+        transcriber._model_verify_for()  # independent verification (live witness)
+        logger.info("warmup.models_done")
+    except Exception as exc:  # pragma: no cover - model load failures
+        logger.debug("warmup.model_failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("app.starting", service=settings.app_name, version=settings.app_version)
     os.makedirs(settings.audio_storage_path, exist_ok=True)
+    # Pre-warm ML assets in the background so the first live session has no
+    # cold-start freeze. A daemon THREAD (not an asyncio task) so it never
+    # touches the event loop or outlives it as a dangling task (which breaks
+    # TestClient loop teardown with "Event loop is closed").
+    threading.Thread(target=_warmup_ml, daemon=True, name="qari-ml-warmup").start()
     logger.info("app.started")
     yield
     logger.info("app.stopped")

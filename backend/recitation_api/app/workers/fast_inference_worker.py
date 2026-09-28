@@ -64,13 +64,20 @@ class FasterWhisperASRAdapter:
     def __init__(self) -> None:
         from ml.inference.faster_whisper_transcriber import get_transcriber
         self._transcriber = get_transcriber()
+        # ORACLE prompt (expected ayah text) is set per-job via
+        # ``set_prompt`` before each batch analysis — the V50 model is
+        # prompt-conditioned and free-runs into repetition loops without it.
+        self.current_prompt: str = ""
+
+    def set_prompt(self, prompt: str) -> None:
+        self.current_prompt = prompt or ""
 
     def transcribe(self, audio, sample_rate: int = 16000):
         from ml.inference.asr import ASRResult, ASRToken, normalize_arabic
 
         started = time.perf_counter()
         words, confidences, starts, ends = self._transcriber.transcribe_with_timings(
-            audio, sample_rate
+            audio, sample_rate, self.current_prompt
         )
 
         tokens: list[ASRToken] = []
@@ -289,6 +296,17 @@ async def run_fast_ml_inference(job: dict) -> dict:
                 ayah=ayah,
             )
             continue
+
+        # ORACLE prompt for the prompt-conditioned V50 model: the expected
+        # ayah text (tashkeel) the decoder should hear. Set per-ayah BEFORE
+        # analysis; without it the free-running decoder loops repetitions.
+        _ref_store = _get_reference_store()
+        _ref = _ref_store.get(surah, ayah) if _ref_store is not None else None
+        pipeline.asr.set_prompt(
+            (getattr(_ref, "text", "") or getattr(_ref, "normalized_text", "") or "")
+            if _ref is not None
+            else ""
+        )
 
         try:
             ml_result = await asyncio.wait_for(

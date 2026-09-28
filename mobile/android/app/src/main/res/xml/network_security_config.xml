@@ -1,19 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- api.qari.app is reached through the Cloudflare Tunnel. Cloudflare
+    <!-- qari.pneumetron.com is reached through Cloudflare. Cloudflare
          terminates TLS with its own publicly-trusted certificate, so we use
          the default system trust store (no custom CA pin). -->
     <domain-config>
-        <domain includeSubdomains="true">api.qari.app</domain>
-    </domain-config>
-
-    <!-- Direct-to-VPS access (fallback / OTA over the raw IP) uses the
-         self-signed qari_ca. Cleartext is allowed for local dev. -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">137.23.42.171</domain>
-        <trust-anchors>
-            <certificates src="@raw/qari_ca" />
-        </trust-anchors>
+        <domain includeSubdomains="true">qari.pneumetron.com</domain>
     </domain-config>
 
     <!-- Dev: emulator / local backend over cleartext. -->

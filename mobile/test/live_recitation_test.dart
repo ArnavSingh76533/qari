@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/data/models/recitation_stream_event.dart';
 import '../lib/data/models/word_model.dart';
+import '../lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
+import '../lib/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import '../lib/features/recitation/presentation/pages/live_recitation_page.dart';
 import '../lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
@@ -79,8 +81,23 @@ void main() {
     expect(find.text('Memorization Mode'), findsNothing);
     // The new (Tarteel-style) Tajweed colours toggle is present.
     expect(find.text('Tajweed colours'), findsOneWidget);
-    // Reveal-as-you-speak is the only behaviour; Start is present.
-    expect(find.text('Start Reciting'), findsOneWidget);
+
+    // Recitation starts from the floating bar's mic, not the old full-width
+    // "Start Reciting" banner (removed in the Mushaf redesign).
+    expect(find.text('Start Reciting'), findsNothing);
+    expect(find.byType(FloatingRecitationBar), findsOneWidget);
+    // Its mic, quick-jump and appearance affordances are all present.
+    final bar = find.byType(FloatingRecitationBar);
+    expect(
+      find.descendant(of: bar, matching: find.byIcon(Icons.mic_rounded)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+          of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.palette_outlined), findsOneWidget);
   });
 
   testWidgets('MushafRevealView colours tajweed letters when enabled',
@@ -89,6 +106,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MushafRevealView(
+            mushaf: MushafTheme.classic,
             words: const ['بسم', 'الله'],
             statuses: const [
               LiveWordStatus.matched,
@@ -131,7 +149,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MushafRevealView(words: const [], statuses: const []),
+          body: MushafRevealView(words: const [], statuses: const [], mushaf: MushafTheme.classic),
         ),
       ),
     );
@@ -147,6 +165,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MushafRevealView(
+            mushaf: MushafTheme.classic,
             words: const ['بسم', 'الله', 'الرحمن'],
             statuses: const [
               LiveWordStatus.matched,
@@ -176,6 +195,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MushafRevealView(
+            mushaf: MushafTheme.classic,
             words: const ['بسم', 'السلام'],
             statuses: const [
               LiveWordStatus.matched,

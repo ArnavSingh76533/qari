@@ -4,6 +4,424 @@
 > Read this file first at the start of every session. Update it whenever
 > meaningful work is done. Keep it concise.
 
+## Session 2026-09-28 — Mushaf v3: ghost ink, early-stop scoring, review on Mushaf ✅
+
+Test build `releases/qari-mushaf-v3.apk` (1.0.49+71, not OTA — app-release.apk /
+app_release.json untouched), served at
+https://qari.pneumetron.com/downloads/qari-mushaf-v3.apk (nginx alias
+`/var/www/qari-downloads/`, root-owned → `sudo install`). SHA1
+8625a122781a0fd143e33c1f1d067b40e62a5fde, 77072151 bytes.
+Fixes (mobile only, live_recitation_page + mushaf_reveal_view):
+- Text flood: `_start` used to wipe `_revealedWords` and `ready` re-flooded the
+  page in solid ink. Now the page is never wiped; `unspoken` = `MushafTheme.ghostInk`
+  (~0.3 alpha), solid only when matched/active; cursor goes to 0 on `ready`.
+- Overflow: live scroll view sat un-Expanded inside MushafPageFrame's Column.
+  Now one `_buildMushafPage` (setup/live/review): SingleChildScrollView wraps the
+  whole frame, bottom padding 140, mic bar floats in a Stack; font = width/14
+  clamped (arabicTextStyle clamps to min 22 anyway). No duplicate Bismillah on Fatiha.
+- Early stop 0%: new pure `recitation_review.dart` `buildRecitationReview` —
+  reach = max(live cursor, last matched+1 live or server); words ≥ reach are
+  unreached (pending, never red, not scored). Server `false` never extends reach.
+- Summary: RecitationResults tiles replaced by review on the same Mushaf page
+  (`reviewMode`: red underline mistakes, tap → WordComparisonSheet).
+Tests: new test/mushaf_v3_test.dart (11). Suite 111 pass / 5 legacy failures
+(app_test ×2, widget_test grammar, lesson_route, reader_render — pre-existing,
+excluded from CI).
+
+## Session 2026-09-22j — COLD-START FREEZE FIXED (ready 6.5s → 0.03s) ✅
+
+User report: first words only appear after ~9s ("9 sec ke baad word aaye"),
+app feels frozen on tap-start. (Also asked to keep V50-for-prompt +
+tarteel-base-for-verify — the current honest policy — NOT retrain.)
+
+**Root cause (measured, not guessed):** `start` → `ready` handshake took
+**6.5s** before ANY audio streamed. Breakdown inside `load_reference()`:
+- `resolve_reference_words_sequence` (7 ayahs) = **4.38s** ← dominant
+- V50 model load = 0.59s, BASE verify load = 0.16s (cheap)
+
+Why 4.38s for 7 ayahs? `ReferenceStore.__init__` globs + parses EVERY
+`{surah}_{ayah}.json` in `reference_data_dir` = **~0.6s** of disk/JSON work,
+and `resolve_reference_words` **rebuilt it per ayah** (7× = 4.3s). Actual
+`store.get()` lookups are instant (0.000s).
+
+**Fix (2 changes, both backend-only — NO new APK):**
+1. `streaming_session.py`: module-level `_get_reference_store()` cache — build
+   the (read-only) `ReferenceStore` ONCE, reuse it (mirrors the existing cache
+   in `app.workers.inference_worker`). 4.38s → 0.6s → ~0s warm.
+2. `main.py` lifespan: `_warmup_ml()` pre-loads the store + BOTH ASR models in a
+   **daemon `threading.Thread`** (NOT `asyncio.create_task` — a fire-and-forget
+   task dangles across TestClient loop teardown and raises "Event loop is
+   closed"). Warms within ~2.6s of boot so the first real session is instant.
+
+**Verified:** `ready` latency **6.5s → 0.03s**; first word reveals at **2.7s**
+(was 9.3s). Full-surah still 27/29 live (unchanged), wrong-audio honesty
+preserved (bismillah clip reveals 6/29 — Fatiha's repeated words only, not a
+echo). Reveal keeps pace (last word at audio-end ~46.5s), no accumulating lag.
+Speech RMS is continuous (no pauses), so reveal "gaps" = repeated-word
+mis-mapping (idx 6-7 `رب العالمين` dropped; `الرحمن الرحيم`/`الله` occur twice
+in Fatiha), a known matcher recall quirk — NOT latency.
+
+**Pre-existing test failures (NOT from this change, confirmed by re-running with
+the daemon-thread variant):** `tests/test_api.py::test_upload_ayah_to_before_from`
+(202 vs 422 validation gap) and `::test_get_nonexistent_session` (TestClient
+"Event loop is closed"). Backend 22/24 pass, ML matcher 11/11 pass.
+
+Model policy (user decision): keep **V50 = oracle prompt + tarteel base =
+independent verify** (the honest pair). NOT pure-V50 (it echoes), NOT retrain-yet.
+
+## Session 2026-09-22i — live words freeze mid-surah FIXED (Tarteel-style DP aligner) ✅
+
+User report: "voice ke sath word nahi chal rahe, 1 ayat padhi phir word appear
+hona band ho gaya" — words don't track the voice and the reveal stops after an
+ayah. Reproduced exactly (full Al-Fatiha over the real WS at 1.0x).
+
+**Root causes found (4 separate bugs — several were masked by each other)**
+1. `app/main.py` **monkey-patches production** to use its own
+   `_ConservativeLiveMatcher` (greedy, `lookahead=0`, consumes every ASR token
+   as noise). Unit tests never exercise it (they inject a transcriber / use the
+   stub, which skips the swap), so matcher fixes looked green while production
+   kept jamming. Once the expected word's token was missing it ate everything
+   after it and NEVER advanced (cursor pinned at 20/29 while the user recited
+   on). **This was the freeze.**
+2. `VERIFY_EVERY_N_PASSES=2` made the independent witness up to ~4s stale, so a
+   just-spoken word could not be corroborated → 5-13s apparent lag.
+3. Acceptance fallback only ran when tier-1 was NON-EMPTY. Windows where the
+   oracle emitted nothing threw the honest words away → hypothesis stopped
+   growing → freeze again.
+4. `_make_stub_transcriber` is called with `(audio, sr, prompt)` but accepts 2
+   args → TypeError swallowed per pass (made `tests/test_streaming.py` hang).
+
+**How Tarteel does it (researched, and now mirrored)**
+ASR → normalized text → **Levenshtein fuzzy matching** against the Quran text
+(deliberately NOT waveform DTW), then **Needleman-Wunsch word alignment**, with
+an **anchor + local-window "tracking mode"** that widens to a "search mode" when
+confidence drops. (Their streaming product, tilawa/offline-tarteel, is a
+streaming CTC over a tajweed-phoneme vocabulary with per-ayah lock-in.)
+
+**What changed**
+- `ml/alignment/streaming_matcher.py`: live path rewritten as a bounded **DP
+  (Needleman-Wunsch) alignment** over (reference window x newest 48 hypothesis
+  tokens), choosing the BEST PARTIAL alignment. Trailing reference words with no
+  evidence stay pending; reference words the reciter demonstrably moved past
+  become SKIPPED (real-time red); a missing/mangled word no longer jams the
+  tracker. `full=True` final review unchanged.
+  - `DP_SKIP_REF_PENALTY = -1.5` (heavy on purpose): makes the DP stop at the
+    last confident match and WAIT instead of skipping words the ASR merely
+    missed in one window (they are usually recovered by the next window).
+  - New `_equal_modulo_one_alef()`: an extra connecting alef (reference `صرط`
+    heard as `صراط`, `الرحمن`→`الرحمان`) is the same word. Alef-family only —
+    any-letter would collide `الذي`/`الذين`.
+  - Consume hypothesis tokens only up to the LAST MATCHED pair (trailing tokens
+    are often the start of the next word).
+- `app/main.py`: `_ConservativeLiveMatcher.evaluate` now delegates alignment to
+  the DP aligner, and keeps only its useful part — `max_live_words`, the
+  speech-duration budget (2.4 words/active-second) that stops an ASR
+  continuation from revealing text the user has not recited.
+- `streaming_session.py`: `VERIFY_EVERY_N_PASSES = 1`; independent-fallback also
+  covers empty tier-1; `_invoke_transcriber()` calls a transcriber with the
+  prompt only if its signature accepts one.
+- `tests/test_streaming.py`: fixed a blocking drain loop and stubbed the
+  independent decode in the bounded-window test.
+
+**Live evidence policy — env `QARI_EVIDENCE_POLICY` (infra/docker-compose.yml)**
+- `tier2` (DEFAULT): the independent unprompted decode IS the live hypothesis.
+  Measured: **27-29/29 words live** on real Al-Fatiha (ayat 1-7 incl. the former
+  ayah-6→7 stall), and **4/29 on an unrelated bismillah clip** (= exactly the
+  words actually spoken). Only 1 decode per pass → ~1.1s.
+- `corroborated`: prompt-conditioned Qari model where the witness agrees.
+  29/29 live but **9/29 false** on the unrelated clip (its prompt echo passes
+  corroboration whenever the witness heard *any* occurrence of the same word).
+- Residual gap (both policies): `رب العالمين` (idx 6-7) is often absent from the
+  base decode entirely (it outputs `الحمد لله الرحمن الرحيم`), so those 2 words
+  are not revealed live. Final review re-scores them honestly.
+
+**⚠️ Open question with the user** (asked, not decided): the honest witness is
+`/app/models/qari-ct2-base` = the **tarteel-ai/whisper-base-ar-quran** base that
+their V50 LoRA adapter was trained on top of. Earlier in this project the user
+forbade using the public tarteel checkpoints. Nothing was downloaded (offline,
+`HF_HUB_OFFLINE=1`), but this is a policy conflict to resolve: their V50 model
+CANNOT verify (proven oracle), so honest live tracking currently needs an
+independent model. Their V50 still drives the FINAL review + tajweed checks.
+
+---
+
+## Session 2026-09-22h — "APP SAB SAHI BATATA HAI" FIXED: honest verification decode ✅
+
+User report: words keep lighting up as correct no matter what is recited — the app
+cannot tell what the user actually said. Investigation + fix:
+
+**Why it happened (proven, not theory)**
+The serving model is the user's trained QARI V50 adapter, and its own training
+report (`/home/ubuntu/adapter_extracted/QARI_V50_RESULT.json`) says it is
+**ORACLE prompt-conditioned**: `best_prompt37.prompt = 0.0065` WER, i.e. the
+training target was to REPRODUCE the expected ayah text given as the prompt.
+A/B decode on the VPS (same audio, same settings):
+
+| audio | decode | output |
+|---|---|---|
+| affan_1 (NOT Al-Fatiha) | base model, unprompted | transcribes the ACTUAL audio |
+| affan_1 (NOT Al-Fatiha) | V50 with Al-Fatiha prompt | **recites Al-Fatiha ayah 2+** |
+| afasy18 (bismillah) | base model, unprompted | `بسم الله الرحمن الرحيم` ✅ |
+| afasy18 (bismillah) | V50 with Al-Fatiha prompt | Al-Fatiha ayah 2+ ❌ |
+
+So the prompted decode can never validate a recitation — it always "passes".
+
+**Also fixed**: `/app/models/qari-ct2-base` was INCOMPLETE (no `tokenizer.json`),
+so faster-whisper tried to download `openai/whisper-tiny` (failed offline).
+Copied `tokenizer.json` + `vocabulary.json` from `qari-v50-ct2` (same tarteel
+base tokenizer) — the base model is now loadable and is the verification witness.
+
+**Fix implemented**
+- `ml/inference/faster_whisper_transcriber.py`: new independent verification
+  decode — `transcribe_independent()` uses the BASE model (env
+  `QARI_FASTERWHISPER_VERIFY_MODEL_DIR`, default `<models>/qari-ct2-base`) with
+  NO prompt. The V50 unprompted decode was useless (it emits fragments).
+- `streaming_session.py`: tier-2 evidence now comes from that independent model,
+  and the corroboration requirement is UNCONDITIONAL — removed the "watchdog"
+  bypass that used to trust the oracle's echoed text after a few stalled passes
+  (that bypass was the actual "everything is correct" bug). If the independent
+  decode heard nothing on a window, the window's words are DROPPED instead of
+  falling back to the prompt echo.
+
+**Verified over the real WebSocket, 1.0x pace**
+- WRONG audio (affan_1 vs Al-Fatiha reference): **0 live word events** — the app
+  no longer claims words that were never recited.
+- CORRECT audio (Al-Fatiha): **25/29 live matched** with `audio_at` matching the
+  true speech position of each ayah (no more running ahead).
+
+**About "detection trained in the model"**
+The ASR training manifests (`train_manifest_v48_aug.jsonl`) contain ONLY
+`audio_path`, `text`, `surah`, `ayah_*`, `augmentation`, `reference_type` — no
+error/mistake labels — and the result JSONs only track prompted WER. So no
+mistake-detection head exists in this checkpoint. Separate detector work DOES
+exist in `/home/ubuntu/v51-candidate` (detector_v53.py, llr_corroboration.py,
+V52/V53/V54) but every variant was REJECTED for deployment (V54 verdict: clean
+clips 2/37 false flags, recall unchanged; LLR probe also rejected). Do not
+deploy those. Detection must come from the independent decode + matcher
+(skipped words are reported as `skipped` = red).
+
+## Session 2026-09-22g — STALL/FREEZE FIXED at ayah boundary (logs-verified) ✅
+
+User report: 9s delay before words appear, words stop appearing after ~4 ayahs,
+no real-time mistake detection. Logs checked (container + nginx).
+
+**Log findings (evidence)**
+- No backend errors: all sessions reached the server, audio was healthy
+  (`source=VOICE_RECOGNITION`, RMS fine), transcriber loaded the local V50 CT2
+  model (`/app/models/qari-v50-ct2`) — no HuggingFace download anywhere.
+- Phone sessions (11:19, 11:20, 11:29) were CUT SHORT / interleaved with the
+  agent's own container restarts — do not test while the agent is restarting.
+- Passes were running (~49 decodes per session, ~2s cadence) yet live `word`
+  events stopped at the ayah-6 -> 7 boundary: the cursor pinned at word 20.
+
+**Root cause (found by instrumenting the session class in-container)**
+The prompted (oracle) decode ECHOES the prompt. Two consequences:
+1. The echoed words were already resolved, so they were consumed as noise.
+   The matcher consumes one token per iteration, so once the expected word's
+   token was missing it drained the whole hypothesis and `j` pinned at its end
+   — the loop body never ran again and the in-loop stall-breaker never fired
+   (permanent freeze).
+2. Worse, the echoed words sat in the cumulative hypothesis, so
+   `stitch_hypothesis()` DEDUPED the genuinely-spoken words when the user
+   finally reached them ("already contributed") — so fresh real evidence could
+   never enter and the reveal never moved again.
+
+**Fixes**
+- `ml/alignment/streaming_matcher.py`: RESYNC after a stall — re-scan the last
+  `RESYNC_SCAN_TOKENS=16` consumed tokens (newest first) and if one confidently
+  matches a LATER reference word (within `RESYNC_REACH=10`), jump the cursor
+  there and report the words in between as SKIPPED (that is the real-time
+  mistake signal). Works even when the hypothesis is fully drained.
+- `streaming_session.py`: on a stalled pass, UNION the unprompted (echo-immune)
+  decode tokens into the window output, and RESET the spent hypothesis tail to
+  the matcher's cursor so stale echo tokens cannot dedup new evidence.
+- Verification (real Al-Fatiha audio over the real WebSocket, 1.0x pace):
+  **29/29 word events BEFORE `final`**, each with `audio_at` matching the actual
+  speech position (honest); second half resolves the moment the audio reaches
+  ayah 7 (38.3s) instead of only in the final dump. Short-ayah case: 4/4 at
+  3.8s. Container healthy, public /health OK.
+
+**Still open / known**
+- First words of a cold session can take ~4-8s (short windows give tier-2
+  garbage, so the corroboration filter delays the first accepted word).
+- Oracle-prompt echo can still make the reveal run AHEAD of the audio in the
+  middle of a surah; the filter bounds it but does not eliminate it.
+- ANCHORED prompt (no future text) was tried and REVERTED: measured 3/29 live
+  words vs 20/29 with the per-ayah prompt — the model needs the current ayah's
+  text (its training condition).
+
+## Session 2026-09-22f — LATENCY CUT ~2.3x (user reported ~15s delay) ✅
+Root cause: the UNPROMPTED (tier-2) decode fell into a repetition loop on
+real recitation → 2.9s AND 22 junk tokens, so each live pass cost ~4.2s
+(1.3s tier-1 + 2.9s tier-2). Two fixes in `ml/inference/faster_whisper_transcriber.py`:
+1. **`max_new_tokens` caps**: unprompted 64 / prompted 96. The looped 7.5s window
+   went 2.87s → **1.09s** with clean output (loops are pure waste: capped
+   output still contains the real words the matcher needs).
+2. **Second model instance** (`_model_raw`) for unprompted decodes: CTranslate2
+   serializes concurrent calls on ONE instance (3.15s wall) but two instances
+   run truly in parallel (1.96s). `QARI_FASTERWHISPER_THREADS=2` in compose so
+   tier-1 + tier-2 use 2+2 = all 4 cores.
+Result: live pass **4.2s → 1.9s**; full-surah E2E still resolves **29/29**
+words before `final`, events arriving ~1.5-3s after the words are spoken.
+Container RSS with both models: ~580MB (host has 16GB).
+
+**MODEL PROVENANCE (asked explicitly): the service runs the user's OWN
+trained model — NOT a HuggingFace model.** `/app/models/qari-v50-ct2` was
+built locally by merging `/home/ubuntu/adapter_extracted/qari-v50-best-prompt-adapter`
+(LoRA, V50, base `tarteel-ai/whisper-base-ar-quran`) then converting to
+CTranslate2 INT8. `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` make any
+external download impossible. The generic public checkpoints in `models/`
+(`qari-ct2-base`, `qari-ct2-tiny`) are NOT used by any service.
+
+## Session 2026-09-22e — LIVE HIGHLIGHTING NOW RESOLVES THE WHOLE SURAH ✅
+Earlier session 22d fixed decode latency but live events still stopped mid-surah.
+Full-surah WS E2E (`/tmp/qari_live_word_test.py`, real Al-Fatiha audio at 1.0x)
+now emits **29/29 word events BEFORE `final`** with correct timing
+(`audio_at` matches each word's position). Fixes in this session:
+1. **Sliding-window HYPO cap bug** (`streaming_session.py`): the cumulative
+   hypothesis was truncated to `len(reference)+lookahead` from the TAIL —
+   exactly where new words are appended. One repetition/echo burst filled the
+   budget and the matcher pinned at the cap forever. Now capped relative to
+   the matcher's consumed prefix (`_hyp_cursor + HYPO_TAIL_CAP`).
+2. **Window overlap**: `TRANSCRIBE_WINDOW_OVERLAP_SEC = 1.5` added — without it
+   a word straddling the window boundary was cut in half and the model emitted
+   a fragment (e.g. 'ٰطَ' for 'صِرَٰطَ') that matches nothing.
+3. **Per-ayah ORACLE prompt** (not full page): prompt = remaining words of the
+   ayah containing the matcher cursor. A 29-word whole-page prompt derailed the
+   prompt-conditioned decoder (it free-ran mid-prompt → zero live events).
+4. **Two-tier decode + echo filter**: tier-1 = prompted decode; tier-2 =
+   UNPROMPTED decode (echo-immune evidence). Tier-1 words are accepted only when
+   tier-2 corroborates (exact/substring/difflib>=0.6). If tier-2 is unreliable
+   (matches no reference word) tier-1 is trusted. If tier-1 is a pure prompt
+   echo, tier-2 words are fed instead — without this the last ayah stalled
+   forever. Verified: remaining-prompt alone made the model echo future text
+   (ayah-5 words fired while only ayah-3 audio had streamed).
+5. **Matcher live fixes** (`streaming_matcher.py`): `_strip_article` match
+   (reference 'صرط' vs spoken 'الصرط' scored 0.67 < 0.80 and never matched) and
+   a bounded **stall resync** (`_stall_passes >= 1`): when the expected word's
+   token is lost, resolve the stuck words as matched (grace) once a later
+   reference word matches confidently. Live mode never skips reference words,
+   so this was a permanent stall before.
+6. **Forced stop pass now waits for the transcribe lock** instead of returning
+   `[]` when the background loop is mid-pass (the final window used to be
+   dropped silently).
+
+## Session 2026-09-22d — LIVE WORD HIGHLIGHTING FIXED (root cause: word_timestamps latency) ✅
+- **Symptom**: live recitation reached the final review screen with matched
+  words, but NO `word` events arrived during streaming — reveal only on stop.
+- **Server verified fine**: WS route buffers frames + runs
+  `transcription_loop` as a background task (1.2s cadence, 6s sliding
+  window); client parses `match`/`matched` + `word_id`/`word_index`
+  correctly.
+- **True root cause**: `FasterWhisperTranscriber._decode` used
+  `word_timestamps=True` → cross-attention DTW made each 6s window take
+  **9.6s** (RTF 1.59 — slower than real time). First pass never finished
+  before the user (or the test) sent `stop`; words only appeared in the
+  forced final pass. With `word_timestamps=False` the same window takes
+  **1.5s** (RTF 0.25) — **6x faster**.
+- **Fix (ml/inference/faster_whisper_transcriber.py)**:
+  1. `transcribe()` (live path) now decodes with `word_timestamps=False`;
+     when segments carry no per-word entries it splits `segment.text` and
+     assigns `exp(avg_logprob)` as shared segment confidence (≈0.9+,
+     above the matcher's 0.55 live threshold).
+  2. `transcribe_with_timings()` (batch path) keeps `word_timestamps=True`.
+  3. `cpu_threads` now honors `QARI_FASTERWHISPER_THREADS` env (default:
+     all cores, was cores//2).
+- **Verified**: real-time WS test — 4/4 word events at t=3.9s while audio
+  still streaming until 6.3s (before: 0 live events); 18s sustained test
+  also clean (later passes no spurious events). Rebuilt + deployed.
+- **No client change needed**; no new APK required for this fix.
+
+## Session 2026-09-22c — TWO BACKEND BUGS FIXED (from first real audio) ✅
+User's loud recitation finally crossed the RMS gate on the OLD build and
+exposed two latent backend bugs:
+- **`stream.tajweed_failed: 'list' object has no attribute 'astype'`**:
+  `_decode_float()` returns a plain list but `TajweedChecker` helpers are
+  numpy-based. Fixed in `streaming_session.py` `_run_tajweed_checks`:
+  `np.asarray(audio, dtype=np.float32)` before `check_all`.
+- **POST /v1/users/onboarding → 500** (sqlalchemy `MissingGreenlet`):
+  `user.stats` lazy relationship touched inside async route. Fixed in
+  `core_api/app/api/routes/users.py` by explicit
+  `select(UserStats).where(UserStats.user_id == user.id)` query.
+- Both rebuilt + deployed; onboarding verified 200 via curl signup→onboard;
+  model loads in new recitation-api container (`initial_prompt` kwarg).
+- **Phone still on old build**: nginx logs show every phone `/app/download`
+  was 0.3–0.7MB (cancelled) — the full 77MB downloads were curl tests. User
+  must install once via phone browser: https://qari.pneumetron.com/v1/app/download
+
+## Session 2026-09-22b — OTA UPDATE DIALOG BUG FIXED + APK v1.0.49+71 ✅
+- **Bug**: phones running v1.0.47+69 never showed the OTA update prompt (even
+  with `force_update: true`) — user stuck on old build, mic fix unreachable.
+- **Root cause**: `main.dart` `_QariAppState`'s `context` sits ABOVE the
+  MaterialApp/Navigator it builds → `showDialog(context: context)` cannot
+  find a Navigator and fails silently. Pre-existing bug; first exposed now.
+- **Fix**: `showDialog` now uses `_navigatorKey.currentState?.context` (the
+  navigator's own context, below MaterialApp). Verified nginx logs showed the
+  phone hitting `/v1/app/version?lang=en` with 200s + Cloudflare
+  `cf-cache-status: DYNAMIC` (not a cache issue) — purely the dialog bug.
+- APK v1.0.49+71 built (contains mic fix + this fix), deployed, OTA serves
+  it (md5-verified `d0b20887...`). `force_update` was set true during the
+  rollout and is now back to **false** (user confirmed install) — future
+  updates show a dismissible "Update available" prompt.
+- Note: full 77MB OTA download via Cloudflare takes <1s server-side; short
+  phone-side downloads in nginx logs were user-cancelled, not truncation.
+
+## Session 2026-09-22 — MIC SENSITIVITY FIX + APK v1.0.48+70 ✅
+- **Bug**: live recitation logged `stream.no_speech_detected` (rms 0.0015–0.0027
+  < server `SILENCE_RMS_THRESHOLD` 0.006) — all audio discarded as silence.
+- **Root cause**: `MicForegroundService.kt` captured with
+  `MediaRecorder.AudioSource.UNPROCESSED`, which bypasses ALL device
+  processing incl. hardware gain/AGC → mic level ~20 dB too quiet. Dart side
+  is a passthrough (no scaling bug); Kotlin `LinearResampler` is
+  amplitude-preserving (verified).
+- **Fix** (all in `MicForegroundService.kt`): source priority is now
+  VOICE_RECOGNITION → MIC → UNPROCESSED(last resort); new `SoftGain` class
+  applies fixed 3x (+9.5 dB) with int16 clamp after hardware gain, before
+  resampling; status lines now report the actual source used (e.g.
+  `capture started: rate=44100 resample=true source=VOICE_RECOGNITION gain=3x`).
+- APK v1.0.48+70 built, deployed to `releases/app-release.apk`, OTA
+  `app_release.json` bumped — version endpoint serves 1.0.48+70 and the
+  download endpoint serves the identical APK (md5-verified). If a device is
+  STILL quiet, fallback levers: raise `SoftGain` factor, or lower server
+  `SILENCE_RMS_THRESHOLD` (0.006, in `streaming_session.py`).
+
+## Session 2026-09-21 — NEW VPS HOSTED HERE + TRAINED MODEL CONNECTED + APK v1.0.47+69 ✅
+**User moved to a NEW VPS (this machine, Oracle, public IP `15.252.136.111`).**
+Old IP `137.23.42.171` is DEAD — all references migrated to the domain
+**`https://qari.pneumetron.com`** (Cloudflare-proxied to this host, real
+trusted TLS — NO self-signed pinning, `trustedSelfSignedHost` removed).
+
+- **Ingress**: Cloudflare DNS → host nginx (`/etc/nginx/sites-available/
+  qari.pneumetron.com`) → core-api `127.0.0.1:8010`, recitation-api
+  `127.0.0.1:8001`. Port 8000 is taken by an unrelated app — do not use.
+- **Stack running here** (`infra/docker-compose.yml`, all healthy):
+  core-api, recitation-api, inference-worker, postgres, redis. Verified:
+  `/health` 200, auth signup/login issues JWT, OTA `/v1/app/version` serves
+  1.0.47, `/v1/app/download` streams APK, WS `/ws/recitation/stream` works
+  end-to-end through Cloudflare (handshake → start JSON → PCM → result).
+- **USER'S OWN TRAINED MODEL IS NOW CONNECTED** (was the missing link):
+  LoRA adapter `/home/ubuntu/adapter_extracted/qari-v50-best-prompt-adapter`
+  (V50, prompt-WER 0.0065) merged with local base
+  `tarteel-ai/whisper-base-ar-quran` (from local HF cache — NO HF downloads)
+  → merged: `models/qari-v50-merged`, serving: **`models/qari-v50-ct2`**
+  (CT2 INT8, mounted read-only at `/app/models`). `HF_HUB_OFFLINE=1` set in
+  compose so nothing can ever fetch from HF. `tokenizer.json` was copied
+  manually from the local Systran cache (CT2 export omits it; offline mode
+  cannot fetch it).
+- **Prompt-conditioned decode is REQUIRED for this model**: without the
+  expected ayah text as prompt it repetition-loops; with prompt, full ayah
+  transcribes perfectly AND partial audio does NOT echo the remaining prompt
+  words (verified — honest live tracking, no auto-complete). Wired via
+  `initial_prompt` in `ml/inference/faster_whisper_transcriber.py` (new
+  `set_prompt()` / per-call prompt), fed from reference `text` (tashkeel)
+  in `streaming_session.py` + `fast_inference_worker.py`.
+- **APK**: v1.0.47+69 built (releases/app-release.apk, 74MB) — domain baked
+  in, zero old-IP refs. OTA `app_release.json` updated, served live.
+- Known env quirks: repo backend tests hang in this env (use direct E2E
+  curls instead); host has no torch/peft (use the Docker image for model
+  ops); Android SDK needed cmdline-tools + NDK 28.2 + platforms 34/36
+  installed at `/usr/lib/android-sdk` for gradle builds.
+
 ## Session 2026-07-28 — lesson test async I/O + animation cleanup
 - Follow-up device/Ubuntu test showed bounded fake-time pumps alone did not
   complete the curriculum asset/plugin futures, so Foundation never rendered.

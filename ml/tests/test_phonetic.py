@@ -51,15 +51,16 @@ class TestMatcherPhoneticIntegration:
 
     def test_wrong_word_still_flagged(self):
         m = StreamingMatcher(self.REF)
-        # 'الرحيم' recited where 'الرحمن' is expected: with lookahead the
-        # matcher treats it as a skip of الرحمن — but NOT as a match for it.
-        states = m.evaluate(["بسم", "الله", "الرحيم"])
+        # 'الرحيم' recited where 'الرحمن' is expected: the matcher must not
+        # collide them phonetically — it is classified as a skip of الرحمن,
+        # never a match for it.
+        states = m.finalize(["بسم", "الله", "الرحيم"])
         by_idx = {s.index: s.status for s in states}
         assert by_idx[2] != WordStatus.MATCHED
 
     def test_phonetic_can_be_disabled(self):
         m = StreamingMatcher(["صراط"], use_phonetic=False)
-        states = m.evaluate(["سراط"])
+        states = m.evaluate(["سراط"], full=True)
         # Without phonetics, a 1-char drift in a 4-char word (0.75 < 0.80)
         # is judged an error — the historical behaviour.
         assert states[0].status == WordStatus.ERROR

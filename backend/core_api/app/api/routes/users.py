@@ -56,10 +56,15 @@ async def complete_onboarding(
     if body.timezone:
         user.timezone = body.timezone
 
-    # Create user_stats row if missing
-    if user.stats is None:
-        stats = UserStats(user_id=user.id)
-        db.add(stats)
+    # Create user_stats row if missing. `user.stats` is a lazy relationship:
+    # touching it here triggers a synchronous lazy-load inside async context
+    # (sqlalchemy MissingGreenlet → 500 on POST /v1/users/onboarding). Query
+    # the row explicitly instead — user_id is unique per user.
+    stats_row = (
+        await db.execute(select(UserStats).where(UserStats.user_id == user.id))
+    ).scalar_one_or_none()
+    if stats_row is None:
+        db.add(UserStats(user_id=user.id))
 
     await db.commit()
     await db.refresh(user)

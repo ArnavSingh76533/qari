@@ -455,6 +455,7 @@ class AppTheme {
     TextDecoration decoration = TextDecoration.none,
     Color? decorationColor,
     TextDecorationStyle decorationStyle = TextDecorationStyle.solid,
+    double decorationThickness = 1.0,
     double letterSpacing = 0,
   }) {
     return TextStyle(
@@ -469,7 +470,7 @@ class AppTheme {
       decoration: decoration,
       decorationColor: decorationColor,
       decorationStyle: decorationStyle,
-      decorationThickness: 2.0,
+      decorationThickness: decorationThickness,
       letterSpacing: letterSpacing,
     );
   }

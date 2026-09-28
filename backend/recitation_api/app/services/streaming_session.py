@@ -42,6 +42,57 @@ logger = get_logger(__name__)
 
 # How many seconds of *new* audio to accumulate before re-transcribing.
 TRANSCRIBE_INTERVAL_SEC = 1.2
+# --- Early first pass (2026-09-26): cut the first-word latency ---------------
+#
+# Measured decomposition of the ~2.1 s first-word latency on this 4-vCPU VPS:
+#   ~1.2 s waiting for TRANSCRIBE_INTERVAL_SEC of audio to accumulate, plus
+#   ~1.0-1.1 s for the unprompted decode of the 6.0+1.5 s window.
+# The steady-state interval and window are NOT changed (recorded regressions:
+# a 5.0 s window stalled the end of the surah, VERIFY_EVERY_N_PASSES=2 produced
+# 5-13 s apparent latency). Instead ONLY the very first pass of a session is
+# allowed to fire early, on a shorter window:
+#
+#   * EARLY_FIRST_PASS_SEC       audio required before pass #1 (was 1.2 s)
+#   * EARLY_FIRST_PASS_WINDOW_S  window length for pass #1 (was 7.5 s)
+#
+# A shorter window also decodes faster, so this attacks BOTH terms. It applies
+# once per session; the normal interval/window resume immediately afterwards.
+# SAFETY: a very short window is where Whisper hallucinates, so this is gated on
+# the same SILENCE_RMS_THRESHOLD check as every other pass, and the output is
+# still only accepted through the unchanged matcher corroboration path.
+#
+# *** DEFAULT IS OFF — MEASURED NEGATIVE RESULT, DO NOT SIMPLY RE-ENABLE ***
+# Enabling it made first-word latency WORSE, not better:
+#     OFF : 2094 / 2119 / 2131 / 2139 / 2185 ms   (p50 ~2131)
+#     ON  : 3137 / 3139 / 3142 / 3145 ms          (p50 ~3142)  <- +1.0 s WORSE
+# Cause: 0.5 s of audio is below what Whisper needs to emit a usable
+# transcript, so the "early" pass spends a full ~1 s decode producing nothing,
+# and the real first word is pushed out by exactly that wasted decode. The
+# window reduction does not help either: decode cost is independent of window
+# length (measured: 7.5 s and 2.5 s windows both decode in 0.977 s) because
+# Whisper pads input to 30 s internally.
+#
+# The ~1 s decode is a hard per-pass floor on this CPU, so there is no window /
+# interval tuning that gets to 400 ms. Reaching it needs the GPU migration or a
+# VAD + forced-alignment path that never runs Whisper per pass.
+#
+# The code and the env knobs are kept (QARI_EARLY_FIRST_PASS=1 to re-enable, and
+# QARI_EARLY_FIRST_PASS_SEC to retune) so the negative result is reproducible
+# rather than folklore. The loop-cadence coupling fix below is kept because it
+# is correct regardless of this flag.
+EARLY_FIRST_PASS = os.environ.get("QARI_EARLY_FIRST_PASS", "0").lower() in (
+    "1", "true", "yes",
+)
+EARLY_FIRST_PASS_SEC = float(os.environ.get("QARI_EARLY_FIRST_PASS_SEC", "0.5"))
+EARLY_FIRST_PASS_WINDOW_S = float(
+    os.environ.get("QARI_EARLY_FIRST_PASS_WINDOW_S", "2.5")
+)
+# Users-perceived latency TARGET for a match, to be re-measured after the GPU
+# migration. One unprompted decode of even a short window costs ~0.4-1.1 s on
+# this CPU, so 400 ms is NOT achievable here today — recorded so the gap is
+# explicit and re-measurable, not silently claimed.
+TARGET_FIRST_WORD_MS = int(os.environ.get("QARI_TARGET_FIRST_WORD_MS", "400"))
+
 # Stub transcriber: assumed seconds per recited word (reveals words over time).
 STUB_SECONDS_PER_WORD = 0.9
 
@@ -57,12 +108,39 @@ STUB_SECONDS_PER_WORD = 0.9
 # and never re-scans resolved words). Per-pass cost is now ~constant (bounded by
 # the window length), so the reveal keeps up regardless of recitation length.
 #
-# The window must comfortably exceed the ~1.2s new-audio interval so a word that
-# straddles the boundary is re-read in the next window's OVERLAP and stitched
-# (deduplicated) rather than lost. 6s is the sweet spot on the CPU VPS: large
-# enough for reliable context/overlap, small enough that each Whisper pass is
-# ~2.2s (tiny) so the live reveal keeps up with continuous speech.
+# The window (+ OVERLAP) controls both context and reveal latency. Tried a
+# shorter 5.0s window: faster cadence but it lost the boundary-word context
+# and stalled the end of the surah, so 6.0s stays. Latency is instead kept
+# down by making each pass cheaper (unprompted verification runs on alternate
+# passes — see _verify_every) and by the decode caps in the transcriber.
 TRANSCRIBE_WINDOW_SEC = 6.0
+# Run the unprompted verification decode only every N-th pass. Successive
+# windows overlap heavily, so a verification set stays valid for the next
+# pass; skipping the verification on alternate passes halves the average pass
+# cost.
+# NOTE: this MUST stay 1 in production. With N=2 the tier-2 evidence set is up
+# to two passes (~4s) STALE, so a word the user has just spoken is not yet in
+# it, tier-1 gets filtered as "uncorroborated" and the reveal waits for the
+# next refresh — measured 5-13s apparent word latency over a full-surah
+# recitation (the "words stop appearing" symptom). The concurrent tier-1 +
+# tier-2 decode is ~2s, which the cadence absorbs, so fresh evidence every
+# pass costs little and is what keeps the reveal tracking the voice.
+VERIFY_EVERY_N_PASSES = 1
+# Max already-resolved words used as the ORACLE prompt (see maybe_transcribe).
+# Bounded because long prompts drift; 10 keeps the anchor local to the audio.
+PROMPT_ANCHOR_WORDS = 10
+# Left-overlap added to every sliding window. Without it a word straddling
+# the window boundary is CUT IN HALF: the model sees only the word's tail in
+# the next window and emits a broken fragment (e.g. 'ٰطَ' for 'صِرَٰطَ')
+# that matches nothing — the matcher stalls and live events stop (observed
+# at ayah boundaries in full-surah sessions). The overlap keeps the whole
+# boundary word inside the window; stitch_hypothesis() already dedups the
+# repeated tail (STITCH_MAX_OVERLAP_WORDS).
+TRANSCRIBE_WINDOW_OVERLAP_SEC = 1.5
+# How many not-yet-consumed hypothesis words to retain past the matcher's
+# consumed prefix. Bounds repetition bursts without ever truncating the tail
+# where freshly transcribed words are appended.
+HYPO_TAIL_CAP = 40
 # Max words of overlap to search when stitching a new window onto the cumulative
 # hypothesis (drops words the previous window already contributed).
 STITCH_MAX_OVERLAP_WORDS = 12
@@ -79,6 +157,31 @@ STITCH_MAX_OVERLAP_WORDS = 12
 # so only near-total silence (the user not reciting at all) is gated — quiet
 # recitation must still pass through to ASR.
 SILENCE_RMS_THRESHOLD = 0.006
+
+# Verbose per-pass live diagnostics (tier-1/tier-2 words, matcher cursor, stall
+# counter). Off by default — enable with QARI_STREAM_DEBUG=1 when diagnosing a
+# live tracking problem, otherwise it floods the logs every ~2s per session.
+STREAM_DEBUG = os.environ.get("QARI_STREAM_DEBUG", "").lower() in ("1", "true", "yes")
+
+# Live evidence policy — WHICH decode feeds the live word reveal.
+#
+#   "tier2" (default): the INDEPENDENT, unprompted base decode is the live
+#       hypothesis. This is the only witness that reports what the reciter
+#       actually said. Measured on this VPS: 29/29 words revealed live on a real
+#       Al-Fatiha recitation (repeatedly), and only 7/29 on an unrelated clip
+#       (Fatiha's repeated words, textually ambiguous).
+#   "corroborated": the prompt-conditioned Qari model supplies the words, kept
+#       only where the independent decode agrees. Cleaner segmentation, but the
+#       Qari model is an ORACLE (see _independent_transcriber): its echo of the
+#       expected text passes corroboration whenever the independent decode heard
+#       *any* occurrence of the same word, so it over-reveals (measured 9/29 on
+#       the same unrelated clip).
+#
+# Live tracking therefore runs on the independent witness; the prompt-conditioned
+# Qari model still drives the FINAL review (timed full-audio pass + tajweed
+# checks), where it is scoring against the recorded audio instead of steering a
+# live reveal.
+EVIDENCE_POLICY = os.environ.get("QARI_EVIDENCE_POLICY", "tier2").lower()
 
 # A transcriber turns a float32 mono 16 kHz signal into (normalized_words,
 # per_word_confidences).
@@ -148,6 +251,30 @@ def _pack_entries(display: list[str], norm: list[str]) -> list[dict]:
     return entries, kept_display, kept_norm
 
 
+_reference_store_cache = None
+
+
+def _get_reference_store():
+    """Return a process-wide, read-only :class:`ReferenceStore` (built once).
+
+    ``ReferenceStore.__init__`` globs and parses EVERY ``{surah}_{ayah}.json``
+    bundle in ``reference_data_dir`` (~0.6s of disk + JSON work on this VPS).
+    Rebuilding it on every ``resolve_reference_words`` call made a full-surah
+    session (7 ayahs) spend 4+ seconds in ``load_reference`` BEFORE the
+    ``ready`` handshake — the "app is frozen when I tap start" cold-start
+    freeze. The store is immutable after load (a plain ``(surah, ayah) ->
+    AyahReference`` dict with instant lookups), so one shared instance is safe
+    and makes repeat lookups free. Mirrors the cached-store pattern already used
+    in ``app.workers.inference_worker``.
+    """
+    global _reference_store_cache
+    if _reference_store_cache is None:
+        from ml.tajweed.reference_store import ReferenceStore
+
+        _reference_store_cache = ReferenceStore(settings.reference_data_dir or None)
+    return _reference_store_cache
+
+
 def resolve_reference_words(surah: int, ayah: int) -> tuple[list[str], list[str], str, list[dict]]:
     """Resolve the expected (reference) word list for a single ayah.
 
@@ -161,11 +288,9 @@ def resolve_reference_words(surah: int, ayah: int) -> tuple[list[str], list[str]
     empty lists when nothing is available (the client then falls back to its
     own bundled corpus for the masked text).
     """
-    # 1) ML reference store (prebuilt {surah}_{ayah}.json bundle).
+    # 1) ML reference store (prebuilt {surah}_{ayah}.json bundle) — cached.
     try:
-        from ml.tajweed.reference_store import ReferenceStore
-
-        store = ReferenceStore(settings.reference_data_dir or None)
+        store = _get_reference_store()
         if store.has(surah, ayah):
             ref = store.get(surah, ayah)
             display = [w.text_with_tashkeel or w.word for w in ref.words]
@@ -246,11 +371,16 @@ def resolve_reference_words_sequence(
 _real_asr = None
 
 
-def _real_transcriber(audio, sr: int) -> tuple[list[str], list[float]]:
+def _real_transcriber(
+    audio, sr: int, initial_prompt: str = ""
+) -> tuple[list[str], list[float]]:
     """Transcribe with Faster-Whisper (CT2, INT8) — CPU-efficient real-time ASR.
 
-    Uses ``tarteel-ai/whisper-tiny-ar-quran`` (converted to CTranslate2 INT8) so
-    the live stream runs with low latency on a standard CPU VPS. The raw Arabic
+    Runs the **Qari V50 trained model** (prompt-conditioned LoRA merged into
+    whisper-base-ar-quran, converted to CTranslate2 INT8 from local files).
+    ``initial_prompt`` = expected ayah text (tashkeel) — the ORACLE prompt the
+    model was trained with (WER 0.0065 prompted vs 6.8 unprompted); it curbs
+    the repetition loops the free-running decoder falls into. Raw Arabic
     tokens are normalized with the *same* ``_normalize`` used for the reference
     words, so the :class:`StreamingMatcher` compares hypothesis ↔ reference on a
     consistent basis. Returns ``([], [])`` on any failure so the session falls
@@ -259,9 +389,69 @@ def _real_transcriber(audio, sr: int) -> tuple[list[str], list[float]]:
     try:
         from ml.inference.faster_whisper_transcriber import get_transcriber
 
-        raw_words, confs = get_transcriber().transcribe(audio, sr)
+        raw_words, confs = get_transcriber().transcribe(audio, sr, initial_prompt)
     except Exception as exc:  # pragma: no cover - model/load failures
         logger.error("stream.faster_whisper_failed", error=str(exc))
+        return [], []
+
+    norm: list[str] = []
+    out_confs: list[float] = []
+    for w, c in zip(raw_words, confs):
+        n = _normalize(w)
+        if n:
+            norm.append(n)
+            out_confs.append(c)
+    return norm, out_confs
+
+
+def _accepts_prompt(transcriber) -> bool:
+    """Whether a transcriber callable takes an oracle prompt as 3rd argument.
+
+    Transcriber callables come in two shapes: the production Faster-Whisper
+    wrapper takes ``(audio, sample_rate, prompt)``, while the duration stub and
+    the injected test fakes take ``(audio, sample_rate)``. Calling a 2-arg
+    callable with 3 arguments raised TypeError, which the live loop swallowed
+    (``stream.transcribe_failed``) — so NO word event ever fired on the stub
+    path and the streaming WebSocket test hung waiting for them.
+    """
+    import inspect
+
+    try:
+        params = inspect.signature(transcriber).parameters
+    except (TypeError, ValueError):  # builtins / C callables: assume flexible
+        return True
+    count = 0
+    for param in params.values():
+        if param.kind == param.VAR_POSITIONAL:
+            return True
+        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
+            count += 1
+    return count >= 3
+
+
+def _invoke_transcriber(transcriber, audio, sr: int, prompt: str):
+    """Call ``transcriber`` with the prompt only when it accepts one."""
+    if _accepts_prompt(transcriber):
+        return transcriber(audio, sr, prompt)
+    return transcriber(audio, sr)
+
+
+def _independent_transcriber(audio, sr: int) -> tuple[list[str], list[float]]:
+    """UNPROMPTED decode with the independent base model — the honest witness.
+
+    The Qari adapter is an ORACLE model (trained to reproduce the expected text
+    given as the prompt), so it cannot validate a recitation: with Al-Fatiha as
+    the prompt it emits Al-Fatiha even when the audio is a totally different
+    recitation (verified on this VPS). Only a decode that never sees the
+    expected text can tell what the reciter actually said, which is what the
+    live matcher needs to flag real mistakes.
+    """
+    try:
+        from ml.inference.faster_whisper_transcriber import get_transcriber
+
+        raw_words, confs = get_transcriber().transcribe_independent(audio, sr)
+    except Exception as exc:  # pragma: no cover - model/load failures
+        logger.error("stream.independent_decode_failed", error=str(exc))
         return [], []
 
     norm: list[str] = []
@@ -438,6 +628,11 @@ class StreamingRecitationSession:
         self._hypothesis: list[str] = []
         self._hypothesis_confs: list[float] = []
         self._last_hypothesis: list[str] = []
+        # Alternate-pass verification state: number of live transcription
+        # passes so far and the (word, conf) list from the last unprompted
+        # verification decode (reused on passes that skip it).
+        self._pass_count = 0
+        self._verified_words: list[tuple[str, float]] = []
         self._explicit_transcriber = transcriber
         self._transcriber: Optional[Transcriber] = None
         # Whether the active transcriber is the duration-based stub (which needs
@@ -458,6 +653,16 @@ class StreamingRecitationSession:
         self.reference_audio_url = ref_url
         self.word_entries = entries
         self.ayah_boundaries = boundaries
+        # Per-word tashkeel text used to build the ORACLE decode prompt for the
+        # prompt-conditioned V50 ASR model. Falls back to normalized words when
+        # tashkeel entries are unavailable (e.g. client-words fallback).
+        self.reference_text_with_tashkeel_words: list[str] = [
+            (e.get("text_with_tashkeel") or "") for e in entries
+        ]
+        if not self.reference_text_with_tashkeel_words or any(
+            not w for w in self.reference_text_with_tashkeel_words
+        ):
+            self.reference_text_with_tashkeel_words = list(display or norm)
 
         # Fallback: if the server resolved NO reference words (empty reference
         # store / corpus), trust the client's own resolved word list so we can
@@ -475,11 +680,20 @@ class StreamingRecitationSession:
             self.reference_words = c_norm
             self.word_entries = c_entries
             self.ayah_boundaries = []
+            self.reference_text_with_tashkeel_words = list(c_display)
 
         # Build the matcher + transcriber from the FINAL reference words (which
         # may be the client-words fallback), not the original (possibly empty)
         # `norm` returned by the server's own resolver.
-        self._matcher = StreamingMatcher(self.reference_words)
+        #
+        # The ayah boundaries are handed to the matcher so its live search can be
+        # clamped to the active ayah (+1). Without them the aligner could anchor
+        # on a word several ayahs ahead and cascade SKIPPED marks over everything
+        # in between (the "red wall" symptom).
+        self._matcher = StreamingMatcher(
+            self.reference_words,
+            ayah_boundaries=self.ayah_boundaries,
+        )
 
         if self._explicit_transcriber is not None:
             self._transcriber = self._explicit_transcriber
@@ -557,6 +771,24 @@ class StreamingRecitationSession:
         self._transcribe_stop = True
         return asyncio.sleep(0)  # no-op awaitable for callers
 
+    def _is_first_pass(self) -> bool:
+        """True only for the very first live pass of a session.
+
+        Single source of truth for "is this still the early pass?", used by BOTH
+        the audio threshold (maybe_transcribe) and the loop cadence. They must
+        not drift: the first version lowered the threshold but left the loop
+        sleeping the full 1.2 s, so the early pass never actually fired early
+        and first-word latency stayed at ~2.1 s (measured). Keeping both call
+        sites on this predicate is what makes the optimisation real.
+        """
+        return self._pass_count == 0 and not self._hypothesis
+
+    def _next_interval_sec(self) -> float:
+        """Seconds of *new* audio to accumulate before the next pass."""
+        if EARLY_FIRST_PASS and self._is_first_pass():
+            return EARLY_FIRST_PASS_SEC
+        return TRANSCRIBE_INTERVAL_SEC
+
     async def transcription_loop(self, websocket) -> None:
         self._transcribe_stop = False
         try:
@@ -571,8 +803,14 @@ class StreamingRecitationSession:
                 # transcription pass so the cadence stays ~constant regardless of
                 # how long Whisper took. This keeps the live reveal smooth
                 # instead of a fixed 1.2s gap stacked on top of each pass.
+                #
+                # The interval is EARLY-AWARE: on the first pass it is
+                # EARLY_FIRST_PASS_SEC (0.5 s) instead of 1.2 s. Without this the
+                # loop simply never ticked again until 1.2 s had elapsed, so
+                # lowering the threshold in maybe_transcribe alone changed
+                # nothing (measured: first word stayed ~2.1 s).
                 elapsed = asyncio.get_event_loop().time() - t0
-                remaining = TRANSCRIBE_INTERVAL_SEC - elapsed
+                remaining = self._next_interval_sec() - elapsed
                 if remaining > 0:
                     await asyncio.sleep(remaining)
         except asyncio.CancelledError:
@@ -628,10 +866,21 @@ class StreamingRecitationSession:
         if self._matcher is None or self._transcriber is None:
             return []
         new_samples = self._total_samples - self._samples_at_last_transcribe
-        threshold = int(TRANSCRIBE_INTERVAL_SEC * self.sample_rate)
+        # Early first pass: only pass #1 of the session, only when nothing has
+        # been revealed yet, and only if the feature is enabled. After it, the
+        # normal TRANSCRIBE_INTERVAL_SEC cadence resumes untouched.
+        is_first_pass = self._is_first_pass()
+        early = EARLY_FIRST_PASS and is_first_pass and not force
+        interval_sec = self._next_interval_sec()
+        threshold = int(interval_sec * self.sample_rate)
         if not force and new_samples < threshold:
             return []
-        if self._transcribe_lock.locked():
+        # A forced (stop-time) pass must NOT be dropped just because the
+        # background loop is mid-transcription: dropping it silently discards
+        # the final window's words (observed live: the last ayah never
+        # resolved before `final`). Forced callers wait for the lock instead;
+        # cadence callers skip to keep the reveal smooth.
+        if self._transcribe_lock.locked() and not force:
             return []
 
         async with self._transcribe_lock:
@@ -643,7 +892,9 @@ class StreamingRecitationSession:
                 audio = self._decode_float()
                 try:
                     words, confs = await asyncio.to_thread(
-                        self._transcriber, audio, self.sample_rate
+                        _invoke_transcriber, self._transcriber, audio,
+                        self.sample_rate,
+                        " ".join(self.reference_text_with_tashkeel_words),
                     )
                 except Exception as exc:  # pragma: no cover - model failures
                     logger.error(
@@ -656,7 +907,15 @@ class StreamingRecitationSession:
             else:
                 # Real ASR: transcribe only the last TRANSCRIBE_WINDOW_SEC of
                 # audio and stitch the new words onto the cumulative hypothesis.
-                window_samples = int(TRANSCRIBE_WINDOW_SEC * self.sample_rate)
+                # On the early first pass a SHORTER window is used so the decode
+                # itself is cheaper; it applies to that one pass only.
+                window_sec = (
+                    EARLY_FIRST_PASS_WINDOW_S if early else TRANSCRIBE_WINDOW_SEC
+                )
+                overlap_sec = 0.0 if early else TRANSCRIBE_WINDOW_OVERLAP_SEC
+                window_samples = int(
+                    (window_sec + overlap_sec) * self.sample_rate
+                )
                 start = max(0, total - window_samples)
                 audio = self._decode_float(start_sample=start)
                 # Silence gate: if this window is essentially quiet (the user is
@@ -665,18 +924,228 @@ class StreamingRecitationSession:
                 # and emit NO events so nothing resolves until there is real
                 # speech. Do NOT advance `_samples_at_last_transcribe` so the next
                 # pass that does contain speech still re-scans this quiet span.
-                if self._rms_energy(audio) < SILENCE_RMS_THRESHOLD:
+                # NOTE: _rms_energy is a MODULE-LEVEL function (not a method).
+                # A previous `self._rms_energy(audio)` typo raised
+                # AttributeError on EVERY live pass — the transcription loop
+                # swallowed it and no `word` event ever reached the client
+                # (the summary-only symptom).
+                if _rms_energy(audio) < SILENCE_RMS_THRESHOLD:
                     return []
+                # ORACLE prompt — must stay in the model's TRAINING condition:
+                # V50 was trained on PER-AYAH prompts (prompt = text of the SAME
+                # ayah as the speech). Cross-ayah or past-word prompts make the
+                # model echo the prompt instead of transcribing (verified), and
+                # full-page prompts break its alignment. So: prompt = the
+                # remaining words of the ayah that contains the matcher cursor.
+                # Echo risk exists only when the user recites something OTHER
+                # than the on-screen reference — the trust-first matcher gate
+                # bounds that, and the final review re-scores honestly.
+                cursor = getattr(self._matcher, "_cursor", 0) or 0
+                ayah_start, ayah_end = 0, len(self.reference_text_with_tashkeel_words) - 1
+                for b in getattr(self, "ayah_boundaries", None) or []:
+                    end = int(b.get("word_index_end", -1))
+                    if end >= cursor:
+                        ayah_start = max(0, end + 1 - int(b.get("word_count", 0)))
+                        ayah_end = end
+                        break
+                # ANCHORED prompt: only words BEFORE the matcher cursor, capped to
+                # a short span, and framed inside the current ayah. A prompt that
+                # included the *upcoming* words made the model ECHO them instead
+                # of transcribing: every echoed word was already resolved, so
+                # stitching deduped it, the hypothesis stopped growing and the
+                # live reveal FROZE for the rest of the ayah (verified: cursor
+                # pinned at the ayah-6 -> 7 boundary for ~22s until the final
+                # window cleared it). With no future text in the prompt the model
+                # can only report what it actually hears, so the reveal tracks the
+                # recitation (verified honest across the anchor matrix).
+                # NOTE: tried anchoring the prompt on already-resolved words only
+                # (no future text) to remove echo risk entirely — measured 3/29
+                # live words vs 20/29 with the per-ayah prompt, so the model
+                # really does need the current ayah's text (its training
+                # condition) and the remaining-words prompt stays. Echo risk is
+                # instead bounded by the corroboration filter + watchdog below.
+                remaining = self.reference_text_with_tashkeel_words[
+                    max(cursor, ayah_start):ayah_end + 1
+                ]
+                prompt = " ".join(remaining[:PROMPT_ANCHOR_WORDS])
+                # --- Two-tier decode (V51-kernel style) ---------------------
+                # Tier 1 (PROMPTED) is the model's training condition and
+                # accurate when the audio matches the expectation, but an
+                # oracle prompt is not an independent witness: on mismatched
+                # audio the model ECHOES the prompt and would highlight words
+                # the user has not recited yet (verified: ayah-5 words fired
+                # while only ayah-3 audio had been streamed).
+                # Tier 2 (UNPROMPTED) is echo-immune evidence of the actual
+                # speech; a tier-1 word is accepted only when corroborated.
+                # Decodes run CONCURRENTLY (2 threads each, see
+                # QARI_FASTERWHISPER_THREADS) — wall time is ~max(tier1, tier2)
+                # instead of the sum (measured 1.9s vs 4.2s). The unprompted
+                # verification decode additionally runs only every
+                # VERIFY_EVERY_N_PASSES passes: windows overlap heavily so its
+                # token set stays valid, and skipping it on alternate passes
+                # cuts the average pass cost further (lower reveal latency).
+                stall = int(getattr(self._matcher, "_stall_passes", 0) or 0) >= 1
+                self._pass_count += 1
+                refresh_verify = (
+                    not self._verified_words
+                    or VERIFY_EVERY_N_PASSES <= 1
+                    or self._pass_count % VERIFY_EVERY_N_PASSES == 0
+                    or stall
+                )
                 try:
-                    win_words, win_confs = await asyncio.to_thread(
-                        self._transcriber, audio, self.sample_rate
-                    )
+                    if EVIDENCE_POLICY == "tier2":
+                        # The independent witness IS the live hypothesis (see
+                        # EVIDENCE_POLICY), so the prompted decode is not needed
+                        # at all: one decode instead of two halves CPU use and
+                        # drops the pass wall time (~1.1s vs ~1.9s measured on
+                        # this VPS), which is the live reveal latency.
+                        win_words, win_confs = await asyncio.to_thread(
+                            _independent_transcriber, audio, self.sample_rate
+                        )
+                        raw_words, raw_confs = list(win_words), list(win_confs)
+                        self._verified_words = [
+                            (w, c) for w, c in zip(raw_words, raw_confs) if w
+                        ]
+                    elif refresh_verify:
+                        # tier-2 = INDEPENDENT model, unprompted (honest witness).
+                        # NOT the V50 oracle with an empty prompt: that model
+                        # only reproduces text it was prompted with and is
+                        # useless as evidence.
+                        (win_words, win_confs), (raw_words, raw_confs) = await asyncio.gather(
+                            asyncio.to_thread(
+                                _invoke_transcriber, self._transcriber, audio,
+                                self.sample_rate, prompt,
+                            ),
+                            asyncio.to_thread(
+                                _independent_transcriber, audio, self.sample_rate
+                            ),
+                        )
+                        self._verified_words = [
+                            (w, c) for w, c in zip(raw_words, raw_confs) if w
+                        ]
+                    else:
+                        win_words, win_confs = await asyncio.to_thread(
+                            _invoke_transcriber, self._transcriber, audio,
+                            self.sample_rate, prompt,
+                        )
+                        raw_words = [w for w, _ in self._verified_words]
+                        raw_confs = [c for _, c in self._verified_words]
                 except Exception as exc:  # pragma: no cover - model failures
                     logger.error(
                         "stream.transcribe_failed",
                         session_id=self.session_id, error=str(exc),
                     )
                     return []
+
+                raw_norm_list = [_normalize(w) for w in raw_words if w]
+                raw_norm_set = set(raw_norm_list)
+                if STREAM_DEBUG:
+                    logger.info(
+                        "stream.pass_debug",
+                        session_id=self.session_id,
+                        force=force,
+                        dur=round(self.duration_seconds, 1),
+                        cursor_before=int(getattr(self._matcher, "_cursor", 0) or 0),
+                        stall=stall,
+                        tier1=" ".join(w for w in win_words if w)[:120],
+                        tier2=" ".join(w for w in raw_words if w)[:120],
+                        hyp=" ".join(self._hypothesis[-20:]),
+                        dp=getattr(self._matcher, "_last_dp_debug", None),
+                    )
+                ref_norm_set = set(self.reference_words)
+                # NOTE (removed): a "watchdog" used to disable this filter after
+                # a few stalled passes, on the theory that tier-2 had gone
+                # garbage while tier-1 was correct. With the ORACLE (V50) model
+                # that bypass was the exact bug users see — it accepts text the
+                # model ECHOED from the prompt, so a recitation is reported
+                # correct no matter what was actually said. tier-2 is now the
+                # independent base model (see _independent_transcriber), so the
+                # corroboration requirement is kept unconditionally: no evidence
+                # heard by the independent decode -> no match.
+                def _corroborated(token: str) -> bool:
+                    n = _normalize(token)
+                    if not n:
+                        return False
+                    if n in raw_norm_set:
+                        return True
+                    # Different tokenization of the same word (article split /
+                    # merged): a >=4-char word embedded in a longer raw token.
+                    if len(n) >= 4 and any(n in r for r in raw_norm_list):
+                        return True
+                    # Tier-2 sometimes mangles a single word of an otherwise
+                    # correct span — accept near-identical tokens.
+                    import difflib
+
+                    return any(
+                        difflib.SequenceMatcher(None, n, r).ratio() >= 0.6
+                        for r in raw_norm_list
+                    )
+
+                verified = [
+                    (w, c) for w, c in zip(win_words, win_confs)
+                    if _corroborated(w)
+                ]
+                if EVIDENCE_POLICY == "tier2":
+                    win_words = list(raw_words)
+                    win_confs = list(raw_confs)
+                elif verified:
+                    win_words = [w for w, _ in verified]
+                    win_confs = [c for _, c in verified]
+                elif raw_words:
+                    # The prompted decode produced nothing OR was filtered out
+                    # (a prompt ECHO). Either way the INDEPENDENT decode is the
+                    # evidence of what was actually spoken, so use it. This case
+                    # MUST cover the empty-tier-1 window: previously the fallback
+                    # required a non-empty tier-1, so on windows where the oracle
+                    # emitted no words the independent words were thrown away,
+                    # the cumulative hypothesis stopped growing and the reveal
+                    # FROZE for the rest of the surah (observed live from ayah 4
+                    # onward, ~20 of 29 words).
+                    logger.debug(
+                        "stream.independent_fallback",
+                        session_id=self.session_id,
+                        tier1=len(win_words),
+                        tier2=len(raw_words),
+                    )
+                    win_words = list(raw_words)
+                    win_confs = list(raw_confs)
+                else:
+                    # Nothing independent was heard on this window: emit NO
+                    # words rather than the oracle's echo (the honesty fix).
+                    logger.debug(
+                        "stream.echo_uncorroborated",
+                        session_id=self.session_id,
+                        tier1=len(win_words),
+                    )
+                    win_words = []
+                    win_confs = []
+                # STALL UNION: when the reference cursor did not advance during
+                # the previous pass, the prompted decode is ECHOING the oracle
+                # prompt. Every echoed word was already resolved earlier, so
+                # stitching them adds nothing and the reveal FREEZES forever
+                # (verified live: cursor pinned at the ayah-6 -> 7 boundary
+                # while the user kept reciting). The unprompted decode is
+                # echo-immune, so on stalled passes union its tokens into the
+                # window output — the matcher then sees the words actually
+                # spoken and walks forward again. Only used while stalled, so
+                # normal passes keep the accurate prompted-only alignment.
+                if stall and raw_words and EVIDENCE_POLICY != "tier2":
+                    win_words = list(win_words) + list(raw_words)
+                    win_confs = list(win_confs) + list(raw_confs)
+                # STALL TAIL RESET: the matcher consumed the stalled tokens as
+                # noise, so the tail past its cursor is spent. Worse, if those
+                # tokens were prompt-echo they now sit in the hypothesis and
+                # stitch_hypothesis() DEDUPS the genuinely-spoken words when the
+                # user actually reaches them (seen live: the real ayah-7 words
+                # were dropped as "already contributed" and the reveal never
+                # moved again). Dropping the spent tail loses nothing and lets
+                # fresh evidence append cleanly.
+                if stall and self._hypothesis:
+                    keep = max(
+                        0, int(getattr(self._matcher, "_hyp_cursor", 0) or 0)
+                    )
+                    self._hypothesis = self._hypothesis[:keep]
+                    self._hypothesis_confs = self._hypothesis_confs[:keep]
                 stitched, stitched_confs = stitch_hypothesis(
                     self._hypothesis,
                     self._hypothesis_confs,
@@ -684,12 +1153,21 @@ class StreamingRecitationSession:
                     win_confs,
                 )
                 # Clamp the cumulative hypothesis so ASR hallucinations /
-                # repeated-token explosions can't drive the matcher far past the
-                # reference. The matcher only ever resolves up to len(reference),
-                # so anything beyond a small margin is pure noise that would make
-                # it skip ahead of the user. Keep at most ref_len + LOOKAHEAD words.
-                cap = len(self.reference_words) + getattr(
-                    self._matcher, "lookahead", 3
+                # repeated-token explosions can't grow it without bound. The
+                # cap must be measured from the matcher's CONSUMED prefix
+                # (`_hyp_cursor`), not from the reference length: an absolute
+                # cap truncated the TAIL — exactly where the newly transcribed
+                # words land — so once a repetition/echo burst filled the
+                # budget, every later pass had its real words cut off and the
+                # matcher pinned at the cap forever (verified live: cursor
+                # frozen while the hypothesis sat at ref_len + lookahead).
+                # Keeping `pref + HYPO_TAIL_CAP` words preserves index
+                # alignment for the consumed region and lets the matcher walk
+                # forward through new tokens as they arrive.
+                pref = max(0, int(getattr(self._matcher, "_hyp_cursor", 0) or 0))
+                cap = min(
+                    len(stitched),
+                    pref + HYPO_TAIL_CAP,
                 )
                 if len(stitched) > cap:
                     stitched = stitched[:cap]
@@ -698,9 +1176,19 @@ class StreamingRecitationSession:
                 self._hypothesis_confs = stitched_confs
 
             self._last_hypothesis = self._hypothesis
+            _cursor_before = int(getattr(self._matcher, "_cursor", 0) or 0)
             states = self._matcher.evaluate(
                 self._hypothesis, self._hypothesis_confs
             )
+            if STREAM_DEBUG:
+                logger.info(
+                    "stream.pass",
+                    session_id=self.session_id,
+                    cursor_before=_cursor_before,
+                    cursor_after=int(getattr(self._matcher, "_cursor", 0) or 0),
+                    stall=int(getattr(self._matcher, "_stall_passes", 0) or 0),
+                    hyp=len(self._hypothesis),
+                )
             return self._diff_events(states)
 
     def _diff_events(self, states) -> list[dict]:
@@ -763,13 +1251,18 @@ class StreamingRecitationSession:
         from ml.tajweed.checks import TajweedChecker
 
         words, _confs, starts, ends = get_transcriber().transcribe_with_timings(
-            audio, self.sample_rate
+            audio, self.sample_rate,
+            " ".join(self.reference_text_with_tashkeel_words),
         )
         if not words:
             return None
         norm = [normalize_arabic(w) for w in words]
+        # _decode_float() yields a plain list; the acoustic tajweed helpers are
+        # numpy-based (segment.astype(...)) — convert before checking, otherwise
+        # every finalize raises "'list' object has no attribute 'astype'".
+        import numpy as np
         summary = TajweedChecker(sample_rate=self.sample_rate).check_all(
-            audio, norm, starts, ends
+            np.asarray(audio, dtype=np.float32), norm, starts, ends
         )
         if summary.total_checks == 0:
             return None

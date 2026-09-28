@@ -39,6 +39,18 @@ class _FakeModel:
 
 
 def _patch_model(fake: _FakeModel):
+    # qari-env does not ship faster_whisper; register a stand-in module so the
+    # lazy `from faster_whisper import WhisperModel` inside transcriber.load()
+    # resolves to the patched fake. Environment shim only, no logic change.
+    import sys
+    import types
+
+    module = sys.modules.get("faster_whisper")
+    if module is None:
+        module = types.ModuleType("faster_whisper")
+        sys.modules["faster_whisper"] = module
+    if not hasattr(module, "WhisperModel"):
+        module.WhisperModel = MagicMock()
     return patch("faster_whisper.WhisperModel", return_value=fake)
 
 

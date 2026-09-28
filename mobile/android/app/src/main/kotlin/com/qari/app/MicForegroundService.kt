@@ -164,15 +164,16 @@ class MicForegroundService : Service() {
                 status("capture error: getMinBufferSize invalid (rate=$rate)")
                 return
             }
-            val ar = buildAudioRecord(rate, minBuf * 2)
-            if (ar == null) {
-                status("capture error: AudioRecord not initialized (rate=$rate source=UNPROCESSED)")
+            val picked = buildAudioRecord(rate, minBuf * 2)
+            if (picked == null) {
+                status("capture error: AudioRecord not initialized (rate=$rate)")
                 return
             }
+            val (ar, srcName) = picked
             ar.startRecording()
             if (ar.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 ar.release()
-                status("capture error: AudioRecord not recording (rate=$rate source=UNPROCESSED)")
+                status("capture error: AudioRecord not recording (rate=$rate)")
                 return
             }
             try {
@@ -182,9 +183,10 @@ class MicForegroundService : Service() {
             }
             reader = ar
             running = true
-            status("capture started: rate=$rate resample=$resample source=UNPROCESSED")
+            status("capture started: rate=$rate resample=$resample source=$srcName gain=3x")
             val shortBuf = ShortArray(minBuf / 2)
             val resampler = if (resample) LinearResampler(rate, TARGET_RATE) else null
+            val gain = SoftGain()
             var zeroTicks = 0
             var dataTicks = 0
             var audioDropped = 0
@@ -207,6 +209,10 @@ class MicForegroundService : Service() {
                         val n = ar.read(shortBuf, 0, shortBuf.size)
                         if (n > 0) {
                             dataTicks++
+                            // Boost first so the resampler interpolates on the
+                            // amplified signal (identical result either way, but
+                            // this keeps one clear amplification point).
+                            gain.apply(shortBuf, n)
                             val bytes = if (resampler != null) {
                                 resampler.resample(shortBuf, n)
                             } else {
@@ -227,7 +233,7 @@ class MicForegroundService : Service() {
                         val now = System.currentTimeMillis()
                         if (now - lastDiagAt > 2000) {
                             lastDiagAt = now
-                            status("reading: rate=$rate source=UNPROCESSED zeroTicks=$zeroTicks dataTicks=$dataTicks dropped=$audioDropped")
+                            status("reading: rate=$rate source=$srcName zeroTicks=$zeroTicks dataTicks=$dataTicks dropped=$audioDropped")
                         }
                     }
                 } catch (e: Exception) {
@@ -291,13 +297,20 @@ class MicForegroundService : Service() {
         }
     }
 
-    private fun buildAudioRecord(rate: Int, bufSize: Int): AudioRecord? {
-        val sources = listOfNotNull(
+    /** Preferred capture sources in priority order. VOICE_RECOGNITION applies
+     * the device's hardware/AGC input gain and is tuned for exactly this
+     * always-on-speech use case; UNPROCESSED intentionally bypasses ALL
+     * processing (incl. gain) and was producing mic levels ~20 dB too quiet
+     * (RMS 0.0015-0.0027 < server SILENCE_RMS_THRESHOLD 0.006 → every frame
+     * discarded as silence). MIC is the safe fallback. */
+    private fun buildAudioRecord(rate: Int, bufSize: Int): Pair<AudioRecord, String>? {
+        val candidates = listOf(
+            "VOICE_RECOGNITION" to MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            "MIC" to MediaRecorder.AudioSource.MIC,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                MediaRecorder.AudioSource.UNPROCESSED else null,
-            MediaRecorder.AudioSource.MIC,
-        )
-        for (src in sources) {
+                "UNPROCESSED" to MediaRecorder.AudioSource.UNPROCESSED else null,
+        ).filterNotNull()
+        for ((name, src) in candidates) {
             try {
                 val ar = AudioRecord(
                     src,
@@ -307,7 +320,7 @@ class MicForegroundService : Service() {
                     bufSize,
                 )
                 if (ar.state == AudioRecord.STATE_INITIALIZED) {
-                    return ar
+                    return ar to name
                 }
                 ar.release()
             } catch (_: Exception) {
@@ -400,6 +413,19 @@ class MicForegroundService : Service() {
             .setContentIntent(contentIntent)
             .setOngoing(true)
         return builder.build()
+    }
+}
+
+/** Fixed +9.5 dB software gain as a safety net for devices whose
+ * VOICE_RECOGNITION input is still quiet (some OEMs report low input levels
+ * even with AGC enabled). Clamps to int16 range so boosted speech never
+ * wraps around. Applied AFTER hardware gain, BEFORE resampling. */
+class SoftGain(private val factor: Double = 3.0) {
+    fun apply(buf: ShortArray, n: Int) {
+        for (i in 0 until n) {
+            val boosted = (buf[i] * factor).toInt().coerceIn(-32768, 32767)
+            buf[i] = boosted.toShort()
+        }
     }
 }
 

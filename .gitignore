@@ -66,3 +66,11 @@ backend/recitation_api/reference_data/
 # Release signing (do not commit)
 mobile/android/upload-keystore.jks
 mobile/android/key.properties
+
+# Release APKs (build artifacts, ~75MB each — serve them, don't version them)
+releases/
+*.apk
+*.aab
+
+# Trained model weights and tokenizers (large; see ml/models/ in .gitignore)
+models/

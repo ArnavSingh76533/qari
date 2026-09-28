@@ -33,14 +33,15 @@ class ApiClient {
       },
     ));
 
-    // Dev/test builds talk to the VPS over a self-signed cert. Accept it so
-    // the app can connect without a publicly-trusted CA. (Not used in
-    // production with a real cert.)
+    // Production TLS is terminated by Cloudflare with a publicly-trusted
+    // certificate, so no self-signed bypass is needed. The callback below is
+    // kept only for a legacy IP fallback (empty = never trust bad certs).
     _dio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () {
         final client = HttpClient()
           ..badCertificateCallback =
-              (cert, host, port) => host == '137.23.42.171';
+              (cert, host, port) => host == AppConstants.trustedSelfSignedHost &&
+                  AppConstants.trustedSelfSignedHost.isNotEmpty;
         return client;
       },
     );

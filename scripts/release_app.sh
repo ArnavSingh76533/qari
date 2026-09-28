@@ -120,7 +120,7 @@ ver, code = m.group(1), int(m.group(2))
 
 data["version"] = ver
 data["version_code"] = code
-data["apk_url"] = "https://137.23.42.171/v1/app/download"
+data["apk_url"] = "https://qari.pneumetron.com/v1/app/download"
 
 if "$NOTES_EN": data["notes_en"] = "$NOTES_EN"
 if "$NOTES_UR": data["notes_ur"] = "$NOTES_UR"

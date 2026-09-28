@@ -10,18 +10,18 @@ class AppConstants {
   /// Production backend is hosted on the VPS and reached over HTTPS on :443
   /// using its public IP. The app accepts the self-signed cert (see
   /// ApiClient) so this works without a public CA:
-  ///   https://137.23.42.171/v1  →  /v1/auth/signup
+  ///   https://qari.pneumetron.com/v1  →  /v1/auth/signup
   ///
-  /// `api.qari.app` does not currently resolve, so the IP is used directly.
-  /// The `/v1` prefix is required (the backend mounts every route under `/v1`).
-  /// nginx terminates :443 (self-signed TLS) and proxies `/v1` to the core API.
+  /// Reached via Cloudflare (publicly-trusted TLS) to the VPS nginx, which
+  /// proxies `/v1` to the core API. The `/v1` prefix is required (the backend
+  /// mounts every route under `/v1`).
   ///
   /// For local development on an emulator, override at run time, e.g.:
   ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/v1
   static String get baseUrl {
     const env = String.fromEnvironment('API_BASE_URL');
     if (env.isNotEmpty) return env;
-    return 'https://137.23.42.171/v1';
+    return 'https://qari.pneumetron.com/v1';
   }
 
   /// WebSocket base URL for real-time recitation streaming.
@@ -50,8 +50,11 @@ class AppConstants {
   }
 
   /// Host whose self-signed TLS cert the app trusts (see ApiClient / the
-  /// streaming service's custom HttpClient). Matches [baseUrl]'s VPS host.
-  static const String trustedSelfSignedHost = '137.23.42.171';
+  /// streaming service's custom HttpClient). Empty = trust no extra host.
+  /// TLS is terminated by Cloudflare with a publicly-trusted certificate, so
+  /// no self-signed pinning is needed anymore. Kept as an empty string for
+  /// backward compatibility with the trust callback.
+  static const String trustedSelfSignedHost = '';
   /// Public Quran audio CDN (everyayah.com) — hosts per-ayah MP3s for many
   /// reciters. The previous `audio.qari.app` host does not resolve (it produced
   /// the "0 source error" / "Audio not available" toast in the reader).
