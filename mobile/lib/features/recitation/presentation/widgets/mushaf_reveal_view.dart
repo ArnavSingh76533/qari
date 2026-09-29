@@ -9,15 +9,19 @@ import '../word_view_state.dart';
 /// A continuous, book-like (Mushaf) render of the recitation as it is revealed
 /// in real time.
 ///
-/// Unlike the old per-word grid, this view never shows placeholder dots or
-/// empty boxes. It starts as a **completely blank canvas** and, as the live
-/// engine confirms words, the caller appends them to [words]. The view lays
-/// them out as one uninterrupted RTL paragraph that wraps line-by-line exactly
-/// like a printed Quran — no artificial per-ayah containers or breaks.
+/// The whole target is laid out up front as one uninterrupted RTL paragraph
+/// that wraps line-by-line exactly like a printed Quran — no per-ayah
+/// containers or breaks. Live verdicts only recolour words in place, so the
+/// layout never shifts.
 ///
-/// When an ayah is completed (i.e. when a revealed word is the last word of an
-/// ayah) the standard inline ayah marker (۝ + the verse number) is rendered
-/// directly in the flow at that point, just like a real Mushaf.
+/// Two reading modes decide how an unspoken word looks:
+///   * Tilawat (default) — the full page is visible in crisp book ink.
+///   * Hifz ([hideUnspoken]) — unspoken words are fully transparent but keep
+///     their exact size, so revealing a word never reflows the line. The ayah
+///     medallions stay visible to guide the reciter.
+///
+/// The ornate ayah medallion is drawn by the KFGQPC Hafs font itself from the
+/// verse number's Arabic-Indic digits, exactly as in the printed Madinah Mushaf.
 ///
 /// A stable [caretKey] is attached to a zero-width anchor at the very end of
 /// the flow, so the parent page can measure the latest revealed word's
@@ -81,6 +85,15 @@ class MushafRevealView extends StatelessWidget {
   /// Called with the word index when a mistake is tapped (review mode only).
   final ValueChanged<int>? onMistakeTap;
 
+  /// Hifz (memorisation) mode: unspoken words — including the active one —
+  /// are drawn fully transparent with their layout preserved.
+  final bool hideUnspoken;
+
+  /// Full-width blocks (surah banner, Bismillah) inserted on their own line
+  /// directly BEFORE the word at the given index, so a page that crosses a
+  /// surah boundary opens the new surah inline, like a printed Mushaf.
+  final Map<int, Widget> blocksBefore;
+
   const MushafRevealView({
     super.key,
     required this.words,
@@ -96,6 +109,8 @@ class MushafRevealView extends StatelessWidget {
     this.cursorKey,
     this.reviewMode = false,
     this.onMistakeTap,
+    this.hideUnspoken = false,
+    this.blocksBefore = const {},
   });
 
   String? _labelForBoundary(int wordIndex) {
@@ -127,6 +142,12 @@ class MushafRevealView extends StatelessWidget {
         : resolveWordViewStates(statuses: statuses, cursor: cursor);
     final children = <Widget>[];
     for (var i = 0; i < words.length; i++) {
+      final block = blocksBefore[i];
+      if (block != null) {
+        // Wrap clamps an infinite width to its own width, so the block takes a
+        // whole line of the flow.
+        children.add(SizedBox(width: double.infinity, child: block));
+      }
       // Attach the scroll anchor to the word at the recitation CURSOR, not to
       // the end of the flow. The page is pre-rendered in full, so an anchor
       // parked after the last word would sit at the bottom of the whole surah
@@ -140,6 +161,7 @@ class MushafRevealView extends StatelessWidget {
           text: words[i],
           viewState: viewState,
           reviewMode: reviewMode,
+          hideUnspoken: hideUnspoken,
           tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
               ? tajweedSpans[i]
               : null,
@@ -205,6 +227,7 @@ class _RevealedWord extends StatelessWidget {
   final String text;
   final LiveWordViewState viewState;
   final bool reviewMode;
+  final bool hideUnspoken;
   final List<TajweedSpan>? tajweedSpans;
   final double fontSize;
   final ThemeData theme;
@@ -215,6 +238,7 @@ class _RevealedWord extends StatelessWidget {
     required this.text,
     required this.viewState,
     this.reviewMode = false,
+    this.hideUnspoken = false,
     this.tajweedSpans,
     required this.fontSize,
     required this.theme,
@@ -228,26 +252,33 @@ class _RevealedWord extends StatelessWidget {
   /// The listening cursor — highlighted, but deliberately NOT a colour verdict.
   bool get _isActive => viewState == LiveWordViewState.active;
 
-  /// Not yet said: faint ghost ink, so the pre-rendered page never reads as
-  /// "already recognised" before the reciter speaks.
   bool get _isUnspoken => viewState == LiveWordViewState.unspoken;
+
+  /// Hifz mode hides every word not yet confirmed — the listening cursor too,
+  /// or the halo would give the next word away.
+  bool get _isHidden => !reviewMode && hideUnspoken && (_isUnspoken || _isActive);
 
   Color get _ink {
     // Red is reachable ONLY via [LiveWordViewState.mismatch], which
     // [resolveWordViewState] grants only at/behind the cursor.
     if (_isMistake) return mushaf.mismatchInk;
-    if (_isUnspoken) return mushaf.ghostInk;
-    // correct / active: crisp, solid book ink (never red, never amber).
+    // Transparent, not removed: the glyphs still take their space, so a
+    // revealed word never reflows the line.
+    if (_isHidden) return mushaf.text.withValues(alpha: 0);
+    // Review: words never reached are ghosted so the recited part stands out.
+    if (reviewMode && _isUnspoken) return mushaf.ghostInk;
+    // Tilawat: crisp, solid book ink for every word.
     return mushaf.text;
   }
 
   @override
   Widget build(BuildContext context) {
     final brightness = theme.brightness;
-    // Tajweed colours only ever appear on a word that has been said — an
-    // unspoken word stays uniformly ghosted.
+    // Tajweed colours never leak through a hidden (Hifz) or ghosted (review,
+    // unreached) word.
     final canColorTajweed = !_isMistake &&
-        !_isUnspoken &&
+        !_isHidden &&
+        !(reviewMode && _isUnspoken) &&
         tajweedSpans != null &&
         tajweedSpans!.isNotEmpty;
 
@@ -349,9 +380,11 @@ class _RevealedWord extends StatelessWidget {
   }
 }
 
-/// Inline end-of-ayah marker (۝ + verse number), rendered directly in the
-/// reading flow — exactly like a printed Mushaf. Uses the theme accent so it
-/// blends into the paper rather than shouting over the text.
+/// Inline end-of-ayah medallion, rendered directly in the reading flow.
+///
+/// The KFGQPC Uthmanic Hafs font draws Arabic-Indic digits as the ornate ayah
+/// medallion of the printed Madinah Mushaf (one glyph, even for "١٢٣"), so the
+/// marker is just the verse number in that font — no hand-drawn circle.
 class _AyahMarker extends StatelessWidget {
   final String label;
   final ThemeData theme;
@@ -367,30 +400,28 @@ class _AyahMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = (fontSize * 0.86).clamp(18.0, 34.0);
-    return Container(
-      width: size,
-      height: size,
-      margin: const EdgeInsets.symmetric(horizontal: 5),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: mushaf.accent.withValues(alpha: 0.75),
-          width: 1.4,
-        ),
-      ),
-      child: Center(
+    return Semantics(
+      label: 'End of ayah $label',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Text(
-          // ۝ (Arabic end-of-ayah) followed by the verse number.
-          '۝$label',
-          style: theme.textTheme.labelSmall?.copyWith(
+          toArabicIndicDigits(label),
+          style: AppTheme.arabicTextStyle(
+            fontSize: fontSize,
             color: mushaf.accent,
-            fontWeight: FontWeight.w700,
-            height: 1.0,
-            fontSize: size * 0.42,
           ),
         ),
       ),
     );
   }
+}
+
+/// "12" -> "١٢". Non-digits pass through unchanged.
+String toArabicIndicDigits(String western) {
+  final out = StringBuffer();
+  for (final c in western.codeUnits) {
+    out.writeCharCode(c >= 0x30 && c <= 0x39 ? 0x0660 + (c - 0x30) : c);
+  }
+  return out.toString();
 }

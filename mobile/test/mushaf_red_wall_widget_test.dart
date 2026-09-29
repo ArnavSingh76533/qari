@@ -159,7 +159,7 @@ void main() {
 
   // ── Word-state → colour contract, across every preset ───────────────────
   // These lock in the four-state rule for the redesigned Mushaf:
-  //   unspoken → faint ghost ink, no wash
+  //   unspoken → book ink (Tilawat), no wash
   //   active   → activeTint wash, book ink
   //   correct  → correctTint (green) wash
   //   mismatch → mismatchInk, and ONLY strictly behind the cursor
@@ -178,10 +178,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // unspoken (ahead of cursor): faint ghost ink, never red, never the
-        // solid ink of a confirmed word.
-        expect(_inkOf(tester, words[2]), t.ghostInk);
-        expect(_inkOf(tester, words[2]), isNot(t.text));
+        // unspoken (ahead of cursor): Tilawat book ink, never red.
+        expect(_inkOf(tester, words[2]), t.text);
         expect(_inkOf(tester, words[2]), isNot(t.mismatchInk));
 
         // active: book ink (NOT red) with the active wash.
@@ -232,8 +230,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // The word ahead of the cursor is ghost ink, not washed, not red.
-      expect(_inkOf(tester, 'عَلَىٰ'), MushafTheme.classic.ghostInk);
+      // The word ahead of the cursor is book ink, not washed, not red.
+      expect(_inkOf(tester, 'عَلَىٰ'), MushafTheme.classic.text);
       // Only the active cursor carries a wash — no green/red verdict leaked
       // forward onto an unspoken word.
       expect(_washes(tester), isNot(contains(MushafTheme.classic.correctTint)));

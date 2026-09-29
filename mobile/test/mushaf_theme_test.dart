@@ -137,8 +137,8 @@ void main() {
 
     testWidgets('renders the surah banner and Bismillah', (tester) async {
       await tester.pumpWidget(_frameHost(MushafTheme.classic));
-      expect(find.text('سورة'), findsOneWidget);
-      expect(find.text('الفاتحة'), findsOneWidget);
+      // Calligraphic plate: "سُورَةُ <name>" set in the Hafs face.
+      expect(find.text('سُورَةُ الفاتحة'), findsOneWidget);
       expect(find.text('Al-Fatihah'), findsOneWidget);
       expect(find.textContaining(MushafBismillah.bismillah), findsOneWidget);
       // The body text is present and is NOT wrapped in its own card.
@@ -157,7 +157,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('سورة'), findsNothing);
+      expect(find.textContaining('سُورَةُ'), findsNothing);
       expect(find.text('صفحة'), findsOneWidget);
     });
 

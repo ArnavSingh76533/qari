@@ -76,7 +76,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('AI Recitation'), findsOneWidget);
+    // Tarteel-style chrome: surah name + Page | Juz | Hizb location.
+    expect(find.text('Al-Fatihah'), findsWidgets);
+    expect(find.text('Page 1 | Juz 1 | Hizb 1'), findsOneWidget);
+    // Tilawat / Hifz mode toggle lives on the floating bar.
+    expect(find.text('Tilawat'), findsOneWidget);
     // The old Memorization Mode toggle must be GONE.
     expect(find.text('Memorization Mode'), findsNothing);
     // The new (Tarteel-style) Tajweed colours toggle is present.
@@ -186,8 +190,9 @@ void main() {
     expect(find.text('الله'), findsOneWidget);
     expect(find.text('الرحمن'), findsOneWidget);
 
-    // Inline end-of-ayah marker (۝ + verse number) appears between ayahs.
-    expect(find.text('۝2'), findsOneWidget);
+    // Inline end-of-ayah medallion (the Hafs font draws the Arabic-Indic
+    // verse number as the ornament) appears between ayahs.
+    expect(find.text('٢'), findsOneWidget);
   });
 
   testWidgets('MushafRevealView tints mispronounced words', (tester) async {

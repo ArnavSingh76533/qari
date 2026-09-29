@@ -10,6 +10,7 @@ import '../../../../data/models/user_model.dart';
 import '../../../../data/models/lesson_model.dart';
 import '../../../quran_reader/presentation/pages/surah_list_page.dart';
 import '../../../recitation/presentation/pages/live_recitation_page.dart';
+import '../../../recitation/presentation/recitation_mode.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 import '../../../lessons/presentation/pages/lesson_player_page.dart';
 import '../../../lessons/presentation/pages/lesson_list_page.dart';
@@ -18,11 +19,11 @@ import '../widgets/continue_card.dart';
 import '../widgets/daily_goal_ring.dart';
 import '../widgets/learning_path_map.dart';
 import '../../../flashcards/presentation/pages/flashcard_page.dart';
-import '../../../qibla/presentation/pages/qibla_page.dart';
 import '../../../tasbih/presentation/pages/tasbih_page.dart';
 import '../../../../core/theme/serene_decorations.dart';
 
-/// S3: Home screen with bottom nav (4 tabs: Home, Quran, Practice, Profile).
+/// S3: Home screen with bottom nav (Home, Quran, Tilawat, Tasbih + the
+/// centre Practice FAB). Tilawat pushes the full-screen Mushaf.
 /// Home tab shows streak, XP, continue card, flashcards due, daily goal ring,
 /// and a Duolingo-style vertical learning path map.
 class HomePage extends ConsumerStatefulWidget {
@@ -38,7 +39,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   final List<Widget> _pages = const [
     HomeTab(),
     SurahListPage(),
-    QiblaPage(),
     TasbihPage(),
   ];
 
@@ -79,8 +79,11 @@ class _HomePageState extends ConsumerState<HomePage> {
               _navItem(Icons.home_rounded, 'Home', 0),
               _navItem(Icons.menu_book_rounded, 'Quran', 1),
               const SizedBox(width: 48), // Space for FAB
-              _navItem(Icons.explore_rounded, 'Qibla', 2),
-              _navItem(Icons.auto_awesome_rounded, 'Tasbih', 3),
+              // Tilawat opens the full-screen Mushaf (no bottom nav), so it
+              // pushes a route instead of switching tabs.
+              _navItem(Icons.auto_stories_rounded, 'Tilawat', -1,
+                  onTap: _openTilawat),
+              _navItem(Icons.auto_awesome_rounded, 'Tasbih', 2),
             ],
           ),
         ),
@@ -88,7 +91,17 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _navItem(IconData icon, String label, int index) {
+  void _openTilawat() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            const LiveRecitationPage(initialMode: RecitationMode.tilawat),
+      ),
+    );
+  }
+
+  Widget _navItem(IconData icon, String label, int index,
+      {VoidCallback? onTap}) {
     final theme = Theme.of(context);
     final isSelected = _currentIndex == index;
 
@@ -97,6 +110,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         behavior: HitTestBehavior.opaque,
         onTap: () async {
           await Haptics.vibrate(HapticsType.selection);
+          if (onTap != null) {
+            onTap();
+            return;
+          }
           setState(() => _currentIndex = index);
         },
         child: Column(

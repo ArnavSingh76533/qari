@@ -128,9 +128,9 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
     ));
-    expect(find.text('١'), findsNothing);
-    // The ornament (۝ + number) is rendered exactly once, at the ayah end.
-    expect(find.textContaining('۝'), findsOneWidget);
+    // The medallion (Arabic-Indic verse number in the Hafs font) is rendered
+    // exactly once, at the ayah end — a stray corpus "١" word would make two.
+    expect(find.text('١'), findsOneWidget);
   });
 
   testWidgets('REQ: red wall guard still holds on a pre-rendered page',

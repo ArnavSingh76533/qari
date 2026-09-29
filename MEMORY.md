@@ -4,6 +4,30 @@
 > Read this file first at the start of every session. Update it whenever
 > meaningful work is done. Keep it concise.
 
+## Session 2026-09-28b — Mushaf v4: Tilawat tab (Qibla removed), Tilawat/Hifz modes ✅
+
+Test build `qari-mushaf-v4.apk` (1.0.49+71, not OTA) at
+https://qari.pneumetron.com/downloads/qari-mushaf-v4.apk?v=4 — SHA1
+37b426371797862a01a9a3ee4621d65aa793ef53, 76827587 bytes.
+- Home nav: Qibla tab → "Tilawat" (pushes full-screen LiveRecitationPage with
+  `initialMode: RecitationMode.tilawat`). `lib/features/qibla/` left on disk,
+  unreferenced; its location/compass deps still in pubspec.
+- `recitation_mode.dart`: RecitationMode {tilawat, hifz}, persisted in prefs
+  (`mushaf_recitation_mode`). Toggle pill on FloatingRecitationBar.
+- MushafRevealView: Tilawat unspoken = crisp `text` ink (v3 ghost ink now only
+  for review "not reached"); `hideUnspoken` (Hifz) = alpha-0 ink so layout never
+  reflows; active word hidden too (halo only). `blocksBefore` inserts full-width
+  surah plate + Bismillah inline at each ayah 1 (page scope shows them too).
+- Ayah medallion = Arabic-Indic digits in KFGQPC Hafs (the font itself draws the
+  ornate ۝ medallion, even multi-digit) — no hand-drawn circle.
+- MushafSurahBanner = CustomPainter Madinah plate (lattice band, ogee cartouche,
+  rosettes). Header: [Surah ▾ / Page | Juz | Hizb] follows the cursor's ayah;
+  hizb from `kHizbStarts` (60 starts, quran.com v4) in surah_titles.dart, which
+  also holds kSurahNamesEnglish / kSurahAyahCounts / kSurahIsMeccan.
+- Page tap hides header, tajweed toggle and floating bar (slide+fade) in
+  setup/live/review.
+Tests: test/mushaf_modes_test.dart (was mushaf_v3_test). 114 pass / same 5 legacy.
+
 ## Session 2026-09-28 — Mushaf v3: ghost ink, early-stop scoring, review on Mushaf ✅
 
 Test build `releases/qari-mushaf-v3.apk` (1.0.49+71, not OTA — app-release.apk /

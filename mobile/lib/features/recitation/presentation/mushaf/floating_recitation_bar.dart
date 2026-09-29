@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../recitation_mode.dart';
 import 'mushaf_theme.dart';
 
 /// Sleek, semi-transparent floating control bar (Tarteel style).
 ///
 /// Replaces the old full-width "Start Reciting" card that consumed a quarter of
-/// the screen. Three compact affordances only:
+/// the screen. Compact affordances only:
 ///   * a circular mic that pulses while listening,
 ///   * a quick ayah/page jump,
-///   * the appearance (theme) trigger.
+///   * the Tilawat / Hifz mode toggle (when [onModeToggle] is set),
+///   * stop/cancel while a session is live.
 ///
 /// It is deliberately a child of the page (not a Scaffold `bottomNavigationBar`)
 /// so the page can slide it away with the app bar for distraction-free reading.
@@ -22,6 +24,8 @@ class FloatingRecitationBar extends StatefulWidget {
     this.onStop,
     this.stopLabel = 'Stop & Review',
     this.micLabel = 'Start reciting',
+    this.mode,
+    this.onModeToggle,
   });
 
   final MushafTheme theme;
@@ -34,6 +38,10 @@ class FloatingRecitationBar extends StatefulWidget {
   final VoidCallback? onStop;
   final String stopLabel;
   final String micLabel;
+
+  /// Current reading mode, shown on the toggle pill.
+  final RecitationMode? mode;
+  final VoidCallback? onModeToggle;
 
   @override
   State<FloatingRecitationBar> createState() => _FloatingRecitationBarState();
@@ -82,14 +90,28 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
           ),
         ],
       ),
+      // Mic is centred; secondary actions sit in equal-width wings.
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _CircleAction(
-            theme: t,
-            icon: Icons.menu_book_rounded,
-            tooltip: 'Jump to ayah / page',
-            onTap: widget.onJumpTap,
+          Expanded(
+            child: Row(
+              children: [
+                _CircleAction(
+                  theme: t,
+                  icon: Icons.menu_book_rounded,
+                  tooltip: 'Jump to ayah / page',
+                  onTap: widget.onJumpTap,
+                ),
+                if (widget.mode != null && widget.onModeToggle != null) ...[
+                  const SizedBox(width: 6),
+                  _ModeToggle(
+                    theme: t,
+                    mode: widget.mode!,
+                    onTap: widget.onModeToggle!,
+                  ),
+                ],
+              ],
+            ),
           ),
           _MicButton(
             theme: t,
@@ -98,16 +120,20 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
             label: widget.micLabel,
             onTap: widget.onMicTap,
           ),
-          if (widget.onStop != null)
-            _CircleAction(
-              theme: t,
-              icon: Icons.stop_rounded,
-              tooltip: widget.stopLabel,
-              emphasise: true,
-              onTap: widget.onStop!,
-            )
-          else
-            const SizedBox(width: 44),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: widget.onStop != null
+                  ? _CircleAction(
+                      theme: t,
+                      icon: Icons.stop_rounded,
+                      tooltip: widget.stopLabel,
+                      emphasise: true,
+                      onTap: widget.onStop!,
+                    )
+                  : const SizedBox(width: 44),
+            ),
+          ),
         ],
       ),
     );
@@ -235,6 +261,70 @@ class _CircleAction extends StatelessWidget {
             icon,
             size: 20,
             color: emphasise ? t.mismatchInk : t.text.withValues(alpha: 0.75),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tilawat / Hifz pill. The eye icon mirrors Tarteel's hide-text control.
+class _ModeToggle extends StatelessWidget {
+  const _ModeToggle({
+    required this.theme,
+    required this.mode,
+    required this.onTap,
+  });
+
+  final MushafTheme theme;
+  final RecitationMode mode;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = theme;
+    final hifz = mode == RecitationMode.hifz;
+    return Tooltip(
+      message: hifz
+          ? 'Hifz: unsaid words hidden. Tap for Tilawat'
+          : 'Tilawat: full page visible. Tap for Hifz',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        // Icon over a small label: fits a narrow wing on any phone width
+        // without truncating "Tilawat".
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 58,
+          height: 44,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            color: hifz
+                ? t.accent.withValues(alpha: 0.16)
+                : t.text.withValues(alpha: 0.05),
+            border: Border.all(
+              color: hifz ? t.accent : t.border.withValues(alpha: 0.8),
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                hifz ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                size: 17,
+                color: hifz ? t.accent : t.text.withValues(alpha: 0.75),
+              ),
+              Text(
+                mode.label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
+                  color: hifz ? t.accent : t.text.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
           ),
         ),
       ),

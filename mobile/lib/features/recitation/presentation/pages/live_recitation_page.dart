@@ -18,6 +18,7 @@ import '../mushaf/mushaf_jump_sheet.dart';
 import '../mushaf/mushaf_page_frame.dart';
 import '../mushaf/mushaf_theme.dart';
 import '../mushaf/surah_titles.dart';
+import '../recitation_mode.dart';
 import '../recitation_review.dart';
 import '../widgets/mushaf_reveal_view.dart';
 import '../widgets/word_comparison_sheet.dart';
@@ -43,7 +44,16 @@ class LiveRecitationPage extends StatefulWidget {
   final int? surahNumber;
   final int? ayahNumber;
 
-  const LiveRecitationPage({super.key, this.surahNumber, this.ayahNumber});
+  /// Forces the opening mode (the Tilawat tab always opens in Tilawat). When
+  /// null, the user's last choice is restored.
+  final RecitationMode? initialMode;
+
+  const LiveRecitationPage({
+    super.key,
+    this.surahNumber,
+    this.ayahNumber,
+    this.initialMode,
+  });
 
   @override
   State<LiveRecitationPage> createState() => _LiveRecitationPageState();
@@ -58,6 +68,9 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// When true, the app bar and floating bar are hidden for distraction-free
   /// reading. Toggled by tapping the Mushaf page itself.
   bool _chromeVisible = true;
+
+  /// Tilawat (full page visible) or Hifz (unsaid words hidden).
+  RecitationMode _mode = RecitationMode.tilawat;
   final AudioService _audioService = AudioService();
 
   LiveRecitationUiState _ui = LiveRecitationUiState.setup;
@@ -94,6 +107,15 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// Ayah-number labels aligned 1:1 with [_ayahBoundaries].
   List<String> _ayahLabels = const [];
+
+  /// Location of each ayah, aligned 1:1 with [_ayahBoundaries]; drives the
+  /// "Surah · Page | Juz | Hizb" header as the cursor moves.
+  List<_AyahMeta> _ayahMeta = const [];
+
+  /// Word index → surah number, for every surah that OPENS inside the target
+  /// (its ayah 1 is present). The surah plate + Bismillah are drawn inline
+  /// right before that word.
+  Map<int, int> _surahStarts = const {};
 
   // ── Live reveal state (the "magic typing" canvas) ───────────────────────
   /// Words revealed so far from the live WebSocket. Starts COMPLETELY EMPTY
@@ -178,6 +200,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       _ayah = widget.ayahNumber ?? 1;
     }
     _tajweedOn = LocalStorageService().getTajweedColorsEnabledSync();
+    if (widget.initialMode != null) {
+      _mode = widget.initialMode!;
+    } else {
+      RecitationMode.load().then((m) {
+        if (mounted) setState(() => _mode = m);
+      });
+    }
     _loadScope();
     _mushafController.load();
 
@@ -305,8 +334,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       final refs = <(int, int)>[];
       final boundaries = <int>[];
       final labels = <String>[];
+      final meta = <_AyahMeta>[];
+      final starts = <int, int>{};
 
       for (final a in ayahs) {
+        if (a.ayahNumber == 1) starts[words.length] = a.surahNumber;
         for (final w in a.words) {
           // Skip the corpus' trailing numeric verse marker (e.g. "١").
           //
@@ -329,6 +361,12 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         if (a.words.isNotEmpty) {
           boundaries.add(words.length - 1);
           labels.add(a.ayahNumber.toString());
+          meta.add(_AyahMeta(
+            surah: a.surahNumber,
+            ayah: a.ayahNumber,
+            page: a.pageNumber,
+            juz: a.juzNumber,
+          ));
         }
       }
 
@@ -339,6 +377,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           _ayahRefs = refs;
           _ayahBoundaries = boundaries;
           _ayahLabels = labels;
+          _ayahMeta = meta;
+          _surahStarts = starts;
           _ayahCount = allAyahs.length;
         });
         // Pre-render the whole target immediately so the screen shows the full
@@ -765,50 +805,72 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }
 
   Widget _buildHeader(ThemeData theme, MushafTheme mushaf) {
-    final subtitle = _scope == RecitationScope.page
-        ? 'Live · Page $_page'
-        : (_ayahFrom == _ayahTo
-            ? 'Live · Surah $_surah:$_ayahFrom'
-            : 'Live · Surah $_surah:$_ayahFrom-$_ayahTo');
+    // Tarteel-style chrome: [Surah ▾ / Page | Juz | Hizb] box, then search and
+    // the theme switcher. The box opens the surah / ayah jump sheet.
+    final meta = _currentMeta;
+    final surah = meta?.surah ?? _surah;
+    final title = surahNameEnglish(surah) ?? 'Surah $surah';
+    final location = meta == null
+        ? 'Loading…'
+        : [
+            if (meta.page != null) 'Page ${meta.page}',
+            if (meta.juz != null) 'Juz ${meta.juz}',
+            'Hizb ${hizbFor(meta.surah, meta.ayah)}',
+          ].join(' | ');
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
       child: Row(
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
-            child: Column(
-              children: [
-                Text(
-                  'AI Recitation',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: mushaf.text,
+            child: Material(
+              color: mushaf.text.withValues(alpha: mushaf.isDark ? 0.08 : 0.05),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: mushaf.border.withValues(alpha: 0.8)),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _openQuickJump(mushaf),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: mushaf.text,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.arrow_drop_down_rounded,
+                              color: mushaf.text.withValues(alpha: 0.7)),
+                        ],
+                      ),
+                      Text(
+                        location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: mushaf.text.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: mushaf.text.withValues(alpha: 0.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // The appearance switcher: a palette action in the top bar.
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: 'Mushaf appearance',
-            onPressed: () => MushafThemeController.showSheet(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.history_rounded),
-            tooltip: 'Recitation history',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const RecitationHistoryPage(),
               ),
             ),
           ),
@@ -821,10 +883,26 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
               ),
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            tooltip: 'Mushaf appearance',
+            onPressed: () => MushafThemeController.showSheet(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'Recitation history',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const RecitationHistoryPage(),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+
 
   Widget _buildBody(ThemeData theme, MushafTheme mushaf) {
     switch (_ui) {
@@ -853,16 +931,32 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   static double _mushafFontSize(double width) =>
       (width / 14).clamp(20.0, 28.0).toDouble();
 
-  /// Bismillah heads a surah's opening only. Al-Fatiha's Bismillah IS ayah 1
-  /// (drawing it again would duplicate it) and At-Tawbah (9) has none.
-  bool get _showBismillah =>
-      _scope == RecitationScope.surah &&
-      _ayahFrom == 1 &&
-      _surah != 1 &&
-      _surah != 9;
+  /// A surah's opening, drawn inline where its ayah 1 begins: the title plate,
+  /// then the Bismillah. Al-Fatiha's Bismillah IS ayah 1 (drawing it again
+  /// would duplicate it) and At-Tawbah (9) has none.
+  Widget _surahOpening(MushafTheme mushaf, int surah) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MushafSurahBanner(
+            theme: mushaf,
+            name: surahNameEnglish(surah) ?? 'Surah $surah',
+            nameArabic: surahNameArabic(surah),
+          ),
+          if (surah != 1 && surah != 9) ...[
+            const SizedBox(height: 6),
+            MushafBismillah(theme: mushaf),
+          ] else
+            const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
 
-  /// The Mushaf page: framed paper with the surah banner, the Bismillah and the
-  /// word flow, all inside ONE bounded scroll view. The frame grows with its
+  /// The Mushaf page: framed paper with inline surah openings and the word
+  /// flow, all inside ONE bounded scroll view. The frame grows with its
   /// text and scrolls as a whole, so text can never overflow past the border,
   /// and [_floatingBarClearance] keeps the last line clear of the mic bar.
   ///
@@ -875,24 +969,20 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     required int cursor,
     bool reviewMode = false,
     ValueChanged<int>? onMistakeTap,
-    VoidCallback? onTap,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final fontSize = _mushafFontSize(constraints.maxWidth);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onTap,
+          // Tap anywhere on the page: hide / show the top and bottom chrome.
+          onTap: () => setState(() => _chromeVisible = !_chromeVisible),
           child: SingleChildScrollView(
             controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(
                 12, 4, 12, _floatingBarClearance),
             child: MushafPageFrame(
               theme: mushaf,
-              surahName: _surahName,
-              surahNameArabic: _surahNameArabic,
-              surahMeta: null,
-              showBismillah: _showBismillah,
               padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
               child: _words.isEmpty || _revealedWords.isEmpty
                   ? Padding(
@@ -919,6 +1009,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                       cursorKey: reviewMode ? null : _cursorKey,
                       reviewMode: reviewMode,
                       onMistakeTap: onMistakeTap,
+                      hideUnspoken: _mode == RecitationMode.hifz,
+                      blocksBefore: {
+                        for (final e in _surahStarts.entries)
+                          e.key: _surahOpening(mushaf, e.value),
+                      },
                     ),
             ),
           ),
@@ -929,26 +1024,35 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   // ─── Setup ──────────────────────────────────────────────────────────────
   Widget _buildSetup(ThemeData theme, MushafTheme mushaf) {
-    // The target is shown as the real Mushaf page in ghost ink (nothing said
-    // yet); the mic bar floats over the page's bottom clearance.
+    // The target is shown as the real Mushaf page in the current mode
+    // (Tilawat: full text; Hifz: hidden); the mic bar floats over the page's
+    // bottom clearance.
     return Stack(
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Tajweed toggle (live per-letter tajweed colouring).
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: _TajweedToggle(
-                value: _tajweedOn,
-                onChanged: (v) {
-                  setState(() => _tajweedOn = v);
-                  LocalStorageService.getInstance().then(
-                    (ls) => ls.setTajweedColorsEnabled(v),
-                  );
-                },
-                theme: theme,
-              ),
+            // Tajweed toggle (live per-letter tajweed colouring). Part of the
+            // chrome, so it hides with the bars on a page tap.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _chromeVisible
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: _TajweedToggle(
+                        value: _tajweedOn,
+                        onChanged: (v) {
+                          setState(() => _tajweedOn = v);
+                          LocalStorageService.getInstance().then(
+                            (ls) => ls.setTajweedColorsEnabled(v),
+                          );
+                        },
+                        theme: theme,
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
             Expanded(
               child: _buildMushafPage(
@@ -960,18 +1064,15 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             ),
           ],
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: FloatingRecitationBar(
-            theme: mushaf,
-            listening: false,
-            micLabel: 'Start reciting',
-            onMicTap: _start,
-            onJumpTap: () => _openQuickJump(mushaf),
-          ),
-        ),
+        _floating(FloatingRecitationBar(
+          theme: mushaf,
+          listening: false,
+          micLabel: 'Start reciting',
+          onMicTap: _start,
+          onJumpTap: () => _openQuickJump(mushaf),
+          mode: _mode,
+          onModeToggle: _toggleMode,
+        )),
       ],
     );
   }
@@ -1009,12 +1110,43 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
   }
 
-  /// Arabic name for the surah banner — only meaningful in surah scope; a page
-  /// can span several surahs, so the page view shows no banner.
-  String? get _surahNameArabic =>
-      _scope == RecitationScope.surah ? surahNameArabic(_surah) : null;
-  String? get _surahName =>
-      _scope == RecitationScope.surah ? 'Surah $_surah' : null;
+  /// Location of the ayah under the cursor (the first ayah before recitation).
+  _AyahMeta? get _currentMeta {
+    if (_ayahMeta.isEmpty) return null;
+    final c = _liveCursor < 0 ? 0 : _liveCursor;
+    for (var i = 0; i < _ayahBoundaries.length && i < _ayahMeta.length; i++) {
+      if (c <= _ayahBoundaries[i]) return _ayahMeta[i];
+    }
+    return _ayahMeta.last;
+  }
+
+  void _toggleMode() {
+    Haptics.vibrate(HapticsType.selection);
+    setState(() => _mode = _mode.toggled);
+    _mode.save();
+  }
+
+  /// Hides the floating bar with the rest of the chrome on a page tap.
+  Widget _floating(Widget bar) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          offset: _chromeVisible ? Offset.zero : const Offset(0, 1.2),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: _chromeVisible ? 1 : 0,
+            child: bar,
+          ),
+        ),
+      ),
+    );
+  }
 
   // ─── Live ───────────────────────────────────────────────────────────────
   Widget _buildLive(ThemeData theme, MushafTheme mushaf) {
@@ -1083,7 +1215,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 mushaf,
                 statuses: _revealedStatuses,
                 cursor: _liveCursor,
-                onTap: () => setState(() => _chromeVisible = !_chromeVisible),
               ),
             ),
           ],
@@ -1091,27 +1222,17 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
         // The floating bar sits OVER the page's bottom clearance, so it never
         // hides text. It slides away with the app bar on a page tap.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            alignment: Alignment.bottomCenter,
-            child: _chromeVisible
-                ? FloatingRecitationBar(
-                    theme: mushaf,
-                    listening: true,
-                    micLabel: 'Reciting — tap to stop',
-                    onMicTap: _stop,
-                    onJumpTap: () => _openQuickJump(mushaf),
-                    onStop: _cancel,
-                    stopLabel: 'Cancel',
-                  )
-                : const SizedBox(width: double.infinity, height: 0),
-          ),
-        ),
+        _floating(FloatingRecitationBar(
+          theme: mushaf,
+          listening: true,
+          micLabel: 'Reciting — tap to stop',
+          onMicTap: _stop,
+          onJumpTap: () => _openQuickJump(mushaf),
+          onStop: _cancel,
+          stopLabel: 'Cancel',
+          mode: _mode,
+          onModeToggle: _toggleMode,
+        )),
       ],
     );
   }
@@ -1192,16 +1313,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             ),
           ],
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _ReviewActions(
-            mushaf: mushaf,
-            onRetry: _reset,
-            onDone: () => Navigator.of(context).maybePop(),
-          ),
-        ),
+        _floating(_ReviewActions(
+          mushaf: mushaf,
+          onRetry: _reset,
+          onDone: () => Navigator.of(context).maybePop(),
+        )),
       ],
     );
   }
@@ -1664,4 +1780,19 @@ class _TajweedToggle extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Where one ayah sits in the Madinah Mushaf.
+class _AyahMeta {
+  final int surah;
+  final int ayah;
+  final int? page;
+  final int? juz;
+
+  const _AyahMeta({
+    required this.surah,
+    required this.ayah,
+    this.page,
+    this.juz,
+  });
 }
