@@ -42,7 +42,7 @@ jobs:
           POSTGRES_PASSWORD: ci-test-only
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd "pg_isready -U qari -d qari_test" --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7
         ports: ["6379:6379"]
@@ -53,6 +53,7 @@ jobs:
       QARI_DATABASE_URL: postgresql+asyncpg://qari:ci-test-only@localhost:5432/qari_test
       QARI_REDIS_URL: redis://localhost:6379/1
       QARI_RATE_LIMIT_ENABLED: "false"
+      PYTHONPATH: ..
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
