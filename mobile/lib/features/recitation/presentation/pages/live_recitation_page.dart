@@ -951,6 +951,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// A surah's opening, drawn inline where its ayah 1 begins: the title plate,
   /// then the Bismillah. Al-Fatiha's Bismillah IS ayah 1 (drawing it again
   /// would duplicate it) and At-Tawbah (9) has none.
+  static const _surahBannerHeight = 56.0;
+  static const _bismillahFontSize = 20.0;
+
+  double _surahOpeningHeight(int surah) =>
+      10 + _surahBannerHeight +
+      (surah == 1 || surah == 9 ? 8 : 6 + _bismillahFontSize * 1.9);
+
   Widget _surahOpening(MushafTheme mushaf, int surah) {
     return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 4),
@@ -961,10 +968,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             theme: mushaf,
             name: surahNameEnglish(surah) ?? 'Surah $surah',
             nameArabic: surahNameArabic(surah),
+            height: _surahBannerHeight,
           ),
           if (surah != 1 && surah != 9) ...[
             const SizedBox(height: 6),
-            MushafBismillah(theme: mushaf),
+            MushafBismillah(theme: mushaf, fontSize: _bismillahFontSize),
           ] else
             const SizedBox(height: 8),
         ],
@@ -1032,7 +1040,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                           minimumHeight: textHeight,
                           blockHeights: {
                             for (final e in _surahStarts.entries)
-                              e.key: e.value == 1 || e.value == 9 ? 92 : 135.6,
+                              e.key: _surahOpeningHeight(e.value),
                           },
                           caretKey: _caretKeyFallback,
                           cursorKey: reviewMode ? null : _cursorKey,

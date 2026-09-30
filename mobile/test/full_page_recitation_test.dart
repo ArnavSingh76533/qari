@@ -19,6 +19,18 @@ void main() {
     final font = FontLoader('KFGQPCUthmanicHafs')
       ..addFont(rootBundle.load('assets/fonts/KFGQPCUthmanicHafs-Regular.otf'));
     await font.load();
+    final icons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await icons.load();
+    // Flutter CI exposes the SDK's platform fonts. Load the real Android UI
+    // face alongside the bundled Quran face instead of test-only Ahem boxes.
+    final flutterRoot = Platform.environment['FLUTTER_ROOT'];
+    if (flutterRoot != null) {
+      final roboto = FontLoader('Roboto')
+        ..addFont(File('$flutterRoot/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf')
+            .readAsBytes().then((bytes) => ByteData.sublistView(bytes)));
+      await roboto.load();
+    }
   });
 
   setUp(() => SharedPreferences.setMockInitialValues({
@@ -73,6 +85,7 @@ void main() {
       await tester.pumpWidget(RepaintBoundary(
           key: preview,
           child: const MaterialApp(
+            debugShowCheckedModeBanner: false,
             home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
           )));
       await tester.pumpAndSettle();
@@ -128,6 +141,7 @@ void main() {
       addTearDown(tester.view.reset);
       final preview = GlobalKey();
       await tester.pumpWidget(RepaintBoundary(key: preview, child: MaterialApp(
+        debugShowCheckedModeBanner: false,
         home: LiveRecitationPage(surahNumber: target.$2, ayahNumber: target.$3,
           initialMode: RecitationMode.tilawat),
       )));

@@ -138,11 +138,17 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 if (widget.pageLabel != null) ...[
-                  Text(widget.pageLabel!,
-                      style: TextStyle(
-                        color: t.text.withValues(alpha: .6),
-                        fontSize: 10,
-                      )),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(widget.pageLabel!,
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: t.text.withValues(alpha: .6),
+                            fontSize: 10,
+                          )),
+                    ),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right_rounded),
                     tooltip: 'Next Quran page',
