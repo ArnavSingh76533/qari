@@ -99,6 +99,9 @@ class MushafRevealView extends StatelessWidget {
   final double minimumHeight;
   final Map<int, double> blockHeights;
 
+  static final Map<(String, String, double, double, TextScaler), double>
+      _fontCache = {};
+
   const MushafRevealView({
     super.key,
     required this.words,
@@ -140,6 +143,11 @@ class MushafRevealView extends StatelessWidget {
   // guessing from character counts. Quran text and verse order never change.
   double _pageFontSize(BuildContext context, double width) {
     final scaler = MediaQuery.textScalerOf(context);
+    final cacheKey = (words.join('\u0000'),
+      blockHeights.entries.map((e) => '${e.key}:${e.value}').join(','),
+      width, minimumHeight, scaler);
+    final cached = _fontCache[cacheKey];
+    if (cached != null) return cached;
     double heightAt(double size) {
       var usedWidth = 0.0;
       var rowHeight = 0.0;
@@ -183,6 +191,8 @@ class MushafRevealView extends StatelessWidget {
         high = mid;
       }
     }
+    if (_fontCache.length >= 8) _fontCache.remove(_fontCache.keys.first);
+    _fontCache[cacheKey] = low;
     return low;
   }
 
