@@ -50,11 +50,15 @@ class LiveRecitationPage extends StatefulWidget {
   /// Tilawat entry explicitly requests visible text.
   final RecitationMode? initialMode;
 
+  /// Allows the standalone UI preview to explain why voice feedback is offline.
+  final VoidCallback? onStartRecitation;
+
   const LiveRecitationPage({
     super.key,
     this.surahNumber,
     this.ayahNumber,
     this.initialMode,
+    this.onStartRecitation,
   });
 
   @override
@@ -1090,7 +1094,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           theme: mushaf,
           listening: false,
           micLabel: 'Start reciting',
-          onMicTap: _loadingPage ? () {} : _start,
+          onMicTap: _loadingPage ? () {} : widget.onStartRecitation ?? _start,
           onJumpTap: () => _openQuickJump(mushaf),
           onPreviousPage:
               _canChangePage && _page > 1 ? () => _changePage(_page - 1) : null,
