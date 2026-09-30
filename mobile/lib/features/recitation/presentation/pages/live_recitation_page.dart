@@ -202,7 +202,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   @override
   void initState() {
     super.initState();
-    _tajweedOn = LocalStorageService().getTajweedColorsEnabledSync();
+    _loadAppearancePreferences();
     _mode = widget.initialMode ?? RecitationMode.hifz;
     _loadInitialPage();
     _mushafController.load();
@@ -227,6 +227,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     _service.dispose();
     _audioService.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAppearancePreferences() async {
+    final enabled = await LocalStorageService().getTajweedColorsEnabled();
+    if (mounted) setState(() => _tajweedOn = enabled);
   }
 
   /// Resets every verdict on the page WITHOUT removing the text: all words go

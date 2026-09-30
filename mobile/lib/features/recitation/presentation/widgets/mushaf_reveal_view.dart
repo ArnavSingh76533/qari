@@ -280,6 +280,7 @@ class MushafRevealView extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Stack(
+        fit: StackFit.passthrough,
         clipBehavior: Clip.none,
         children: [
           ConstrainedBox(
@@ -391,6 +392,7 @@ class _RevealedWord extends StatelessWidget {
     final content = canColorTajweed
         ? Text.rich(
             _buildTajweedSpan(brightness),
+            style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
           )
         : Text(

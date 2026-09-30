@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -212,4 +213,81 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets('Tajweed colours restore and preserve the full-page layout',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('tajweed_colors_enabled', true);
+    await tester.pumpWidget(const MaterialApp(
+      home: LiveRecitationPage(surahNumber: 80,
+          initialMode: RecitationMode.tilawat),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
+        .tajweedEnabled, isTrue);
+    final before = tester.getRect(find.text('٤٠').last);
+    await tester.tap(find.byTooltip('Mushaf appearance'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.text('Tajweed colours'))).pop();
+    await tester.pumpAndSettle();
+    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
+        .tajweedEnabled, isFalse);
+    expect(tester.getRect(find.text('٤٠').last), before,
+        reason: 'colour changes must preserve the Quran word layout');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('all 604 Quran pages fit above the recitation controls',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('tajweed_colors_enabled', true);
+    final data = await rootBundle.load('assets/quran_corpus.json.gz');
+    final corpus = jsonDecode(utf8.decode(gzip.decode(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes))))
+        as Map<String, dynamic>;
+    final starts = <int, (int, int)>{};
+    for (final surah in corpus['surahs'] as List<dynamic>) {
+      for (final ayah in surah['ayahs'] as List<dynamic>) {
+        starts.putIfAbsent(ayah['page_number'] as int,
+            () => (ayah['surah_number'] as int, ayah['ayah_number'] as int));
+      }
+    }
+    expect(starts.keys.toSet(), {for (var page = 1; page <= 604; page++) page});
+    for (var page = 1; page <= 604; page++) {
+      final start = starts[page]!;
+      await tester.pumpWidget(MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: LiveRecitationPage(
+          key: ValueKey(page),
+          surahNumber: start.$1,
+          ayahNumber: start.$2,
+          initialMode: RecitationMode.tilawat,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final reveal = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+      expect(reveal.tajweedEnabled, isTrue, reason: 'page $page restores Tajweed');
+      final marker = find.descendant(
+        of: find.byType(MushafRevealView),
+        matching: find.text(toArabicIndicDigits(reveal.ayahLabels.last)),
+      ).last;
+      final controls = tester.getRect(find.byType(FloatingRecitationBar));
+      final position =
+          tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+      expect(tester.getRect(marker).bottom, lessThanOrEqualTo(controls.top),
+          reason: 'page $page must show its final ayah');
+      expect(position.maxScrollExtent, lessThanOrEqualTo(2),
+          reason: 'page $page must fit completely at standard text size');
+      expect(tester.takeException(), isNull, reason: 'page $page');
+    }
+    await tester.pumpWidget(const SizedBox());
+  }, timeout: const Timeout(Duration(minutes: 6)));
 }
