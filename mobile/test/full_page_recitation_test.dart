@@ -261,18 +261,18 @@ void main() {
       }
     }
     expect(starts.keys.toSet(), {for (var page = 1; page <= 604; page++) page});
+    await tester.pumpWidget(const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
+    ));
+    await tester.pumpAndSettle();
+    final failures = <String>[];
     for (var page = 1; page <= 604; page++) {
-      final start = starts[page]!;
-      await tester.pumpWidget(MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: LiveRecitationPage(
-          key: ValueKey(page),
-          surahNumber: start.$1,
-          ayahNumber: start.$2,
-          initialMode: RecitationMode.tilawat,
-        ),
-      ));
-      await tester.pumpAndSettle();
+      if (page > 1) {
+        await tester.tap(find.byTooltip('Next Quran page'));
+        await tester.pumpAndSettle();
+      }
+      expect(find.textContaining('Page $page |'), findsOneWidget);
       final reveal = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
       expect(reveal.tajweedEnabled, isTrue, reason: 'page $page restores Tajweed');
       final marker = find.descendant(
@@ -282,12 +282,17 @@ void main() {
       final controls = tester.getRect(find.byType(FloatingRecitationBar));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
-      expect(tester.getRect(marker).bottom, lessThanOrEqualTo(controls.top),
-          reason: 'page $page must show its final ayah');
-      expect(position.maxScrollExtent, lessThanOrEqualTo(2),
-          reason: 'page $page must fit completely at standard text size');
+      final lastBottom = tester.getRect(marker).bottom;
+      if (lastBottom > controls.top || position.maxScrollExtent > 2) {
+        final first = find.descendant(of: find.byType(MushafRevealView),
+            matching: find.text(reveal.words.first)).first;
+        final font = tester.widget<Text>(first).style?.fontSize;
+        failures.add('page $page: font=$font, words=${reveal.words.length}, '
+            'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
+      }
       expect(tester.takeException(), isNull, reason: 'page $page');
     }
+    expect(failures, isEmpty, reason: failures.join('\n'));
     await tester.pumpWidget(const SizedBox());
   }, timeout: const Timeout(Duration(minutes: 6)));
 }

@@ -189,7 +189,7 @@ class MushafRevealView extends StatelessWidget {
       return totalHeight - 6;
     }
 
-    var low = 14.0;
+    var low = 13.0;
     var high = 40.0;
     for (var i = 0; i < 7; i++) {
       final mid = (low + high) / 2;
