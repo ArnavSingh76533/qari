@@ -1168,7 +1168,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  MushafThemeController.showSheet(context);
+                  MushafThemeController.showSheet(context, controller: _mushafController);
                 },
               ),
             ],

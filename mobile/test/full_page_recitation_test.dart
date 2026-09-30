@@ -250,8 +250,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('appearance menu changes the Quran page theme',
-      (tester) async {
+  testWidgets('appearance menu changes the Quran page theme', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
     ));

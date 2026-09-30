@@ -211,15 +211,18 @@ class MushafThemeController extends ChangeNotifier {
   }
 
   /// The bottom sheet listing the four presets.
-  static Future<void> showSheet(BuildContext context) {
-    final controller = MushafThemeScope.of(context);
+  static Future<void> showSheet(
+    BuildContext context, {
+    MushafThemeController? controller,
+  }) {
+    final pageController = controller ?? MushafThemeScope.of(context);
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: controller.theme.background,
+      backgroundColor: pageController.theme.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (ctx) => _MushafThemeSheet(controller: controller),
+      builder: (ctx) => _MushafThemeSheet(controller: pageController),
     );
   }
 }
