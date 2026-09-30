@@ -4,8 +4,7 @@ on:
     branches: ["codex/qari-full-page-recitation"]
     paths:
       - ".github/workflows/build-ui-preview-apk.yml"
-      - "mobile/lib/main_ui_preview.dart"
-      - "mobile/test/ui_preview_test.dart"
+      - "mobile/**"
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,7 +28,7 @@ jobs:
       - name: Prepare separate preview app
         run: |
           python3 - <<'PY'
-          import pathlib, re, json
+          import pathlib, re, json, os
           gradle = pathlib.Path("mobile/android/app/build.gradle.kts")
           text = gradle.read_text()
           old = 'applicationId = "com.qari.app"'
@@ -40,7 +39,7 @@ jobs:
           spec = pathlib.Path("mobile/pubspec.yaml").read_text()
           match = re.search(r"^version:\s*([\d.]+)\+(\d+)", spec, re.M)
           release = json.loads(pathlib.Path("releases/app_release.json").read_text())
-          code = max(int(match.group(2)), int(release["version_code"])) + 1
+          code = max(int(match.group(2)), int(release["version_code"])) + int(os.environ["GITHUB_RUN_NUMBER"])
           with pathlib.Path("build-preview.env").open("w") as output:
               output.write(f"PREVIEW_VERSION={match.group(1)}\nPREVIEW_CODE={code}\n")
           PY
@@ -53,7 +52,7 @@ jobs:
         run: dart format lib/main_ui_preview.dart test/ui_preview_test.dart
       - name: Verify offline entry and Quran modes
         working-directory: mobile
-        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart
+        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart test/mushaf_typography_test.dart
       - name: Build ARM64 preview APK
         working-directory: mobile
         run: flutter build apk --release --target lib/main_ui_preview.dart --target-platform android-arm64 --build-name "$PREVIEW_VERSION" --build-number "$PREVIEW_CODE"

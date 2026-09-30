@@ -99,6 +99,10 @@ class MushafRevealView extends StatelessWidget {
   final double minimumHeight;
   final Map<int, double> blockHeights;
 
+  /// Inclusive word indices at the ends of verified printed Mushaf lines.
+  /// Empty for targets without printed page metadata (natural wrapping).
+  final List<int> lineEnds;
+
   static final Map<(String, String, double, double, TextScaler), double>
       _fontCache = {};
 
@@ -121,6 +125,7 @@ class MushafRevealView extends StatelessWidget {
     this.blocksBefore = const {},
     this.minimumHeight = 0,
     this.blockHeights = const {},
+    this.lineEnds = const [],
   });
 
   String? _labelForBoundary(int wordIndex) {
@@ -144,7 +149,7 @@ class MushafRevealView extends StatelessWidget {
   double _pageFontSize(BuildContext context, double width) {
     final scaler = MediaQuery.textScalerOf(context);
     final cacheKey = (
-      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(',')]
+      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(','), lineEnds.join(',')]
           .join('\u0001'),
       '${blocksBefore.keys.join(',')}|${blockHeights.entries.map((e) => '${e.key}:${e.value}').join(',')}',
       width,
@@ -157,23 +162,23 @@ class MushafRevealView extends StatelessWidget {
       var usedWidth = 0.0;
       var rowHeight = 0.0;
       var totalHeight = 0.0;
+      var widestLine = 0.0;
       void finishRow() {
         if (rowHeight == 0) return;
+        if (usedWidth > widestLine) widestLine = usedWidth;
         totalHeight += rowHeight + 6;
         usedWidth = rowHeight = 0;
       }
 
-      void addText(String text) {
+      Size measure(String text) {
         final painter = TextPainter(
           text: TextSpan(text: text, style: _arabicStyle(size, mushaf.text)),
           textDirection: TextDirection.rtl,
           textScaler: scaler,
         )..layout();
-        final wordWidth = painter.width + 4;
-        if (usedWidth > 0 && usedWidth + 2 + wordWidth > width) finishRow();
-        usedWidth += (usedWidth > 0 ? 2 : 0) + wordWidth;
-        if (painter.height > rowHeight) rowHeight = painter.height;
+        final result = Size(painter.width + 4, painter.height);
         painter.dispose();
+        return result;
       }
 
       for (var i = 0; i < words.length; i++) {
@@ -181,11 +186,24 @@ class MushafRevealView extends StatelessWidget {
           finishRow();
           totalHeight += (blockHeights[i] ?? 92) + 6;
         }
-        addText(words[i]);
+        final word = measure(words[i]);
+        var groupWidth = word.width;
         final label = _labelForBoundary(i);
-        if (label != null) addText(toArabicIndicDigits(label));
+        if (label != null) {
+          // Measure the same indivisible final-word/marker pair we render.
+          groupWidth += measure(toArabicIndicDigits(label)).width;
+        }
+        if (lineEnds.isEmpty &&
+            usedWidth > 0 && usedWidth + 2 + groupWidth > width) {
+          finishRow();
+        }
+        usedWidth += (usedWidth > 0 ? 2 : 0) + groupWidth;
+        if (word.height > rowHeight) rowHeight = word.height;
+        if (lineEnds.contains(i)) finishRow();
       }
       finishRow();
+      // Canonical rows never rewrap. Reduce glyph size, never grow word gaps.
+      if (widestLine > width - 0.5) return double.infinity;
       return totalHeight - 6;
     }
 
@@ -225,11 +243,28 @@ class MushafRevealView extends StatelessWidget {
           ]
         : resolveWordViewStates(statuses: statuses, cursor: cursor);
     final children = <Widget>[];
+    final lineWords = <Widget>[];
+    void finishLine() {
+      if (lineWords.isEmpty) return;
+      children.add(SizedBox(
+        width: double.infinity,
+        child: Align(
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            textDirection: TextDirection.rtl,
+            children: List.of(lineWords),
+          ),
+        ),
+      ));
+      lineWords.clear();
+    }
     for (var i = 0; i < words.length; i++) {
       final block = blocksBefore[i];
       if (block != null) {
         // Wrap clamps an infinite width to its own width, so the block takes a
         // whole line of the flow.
+        finishLine();
         children.add(SizedBox(width: double.infinity, child: block));
       }
       // Attach the scroll anchor to the word at the recitation CURSOR, not to
@@ -260,23 +295,34 @@ class MushafRevealView extends StatelessWidget {
           child: word,
         );
       }
-      children.add(word);
-      // Inline ayah marker directly AFTER the last word of that ayah, so it sits
-      // inside the paragraph flow exactly like a printed Mushaf. (It used to be
-      // emitted BEFORE the next word, which could not attach to the word it
-      // belongs to and left a stray gap at line boundaries.)
       final boundaryLabel = _labelForBoundary(i);
       if (boundaryLabel != null) {
-        children.add(_AyahMarker(
-          label: boundaryLabel,
-          theme: theme,
-          mushaf: mushaf,
-          fontSize: size,
-        ));
+        // A final word and its marker wrap together; their padding gives a
+        // tight, fixed 4dp gap, without any free-standing marker container.
+        word = Row(
+          mainAxisSize: MainAxisSize.min,
+          textDirection: TextDirection.rtl,
+          children: [
+            word,
+            _AyahMarker(
+              label: boundaryLabel,
+              theme: theme,
+              mushaf: mushaf,
+              fontSize: size,
+            ),
+          ],
+        );
+      }
+      if (lineEnds.isEmpty) {
+        children.add(word);
+      } else {
+        if (lineWords.isNotEmpty) lineWords.add(const SizedBox(width: 2));
+        lineWords.add(word);
+        if (lineEnds.contains(i)) finishLine();
       }
     }
-    // Every word is present from the first frame, so justification stays
-    // stable while verdicts recolour the existing glyphs.
+    finishLine();
+    // Only vertical run spacing fills the sheet. Horizontal gaps stay fixed.
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Stack(
@@ -287,9 +333,7 @@ class MushafRevealView extends StatelessWidget {
             constraints: BoxConstraints(minHeight: minimumHeight),
             child: Wrap(
               direction: Axis.horizontal,
-              alignment: minimumHeight > 0
-                  ? WrapAlignment.spaceBetween
-                  : WrapAlignment.start,
+              alignment: WrapAlignment.start,
               runAlignment: minimumHeight > 0
                   ? WrapAlignment.spaceBetween
                   : WrapAlignment.start,
@@ -394,11 +438,13 @@ class _RevealedWord extends StatelessWidget {
             _buildTajweedSpan(brightness),
             style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
+            softWrap: false,
           )
         : Text(
             text,
             style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
+            softWrap: false,
           );
 
     final word = Padding(

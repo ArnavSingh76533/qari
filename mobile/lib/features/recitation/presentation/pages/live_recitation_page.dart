@@ -11,6 +11,7 @@ import '../../../../data/models/recitation_session_record.dart';
 import '../../../../data/models/recitation_stream_event.dart';
 import '../../../../data/models/word_model.dart';
 import '../../../../data/repositories/local_corpus_repository.dart';
+import '../../../../data/repositories/mushaf_layout_repository.dart';
 import '../../../../data/services/audio_service.dart';
 import '../../../../data/services/local_storage_service.dart';
 import '../../../../data/services/recitation_history_service.dart';
@@ -112,6 +113,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// 0-based index of the LAST word of each ayah in [_words] (for markers).
   List<int> _ayahBoundaries = const [];
+  List<int> _lineEnds = const [];
 
   /// Ayah-number labels aligned 1:1 with [_ayahBoundaries].
   List<String> _ayahLabels = const [];
@@ -339,6 +341,9 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         allAyahs = await LocalCorpusRepository().getAyahs(_surah);
       }
       if (allAyahs.isEmpty) return;
+      final lineEnds = _scope == RecitationScope.page
+          ? await MushafLayoutRepository().getLineEnds(_page)
+          : const <int>[];
 
       // For the surah scope, restrict to the chosen ayah range.
       final ayahs = _scope == RecitationScope.surah
@@ -400,6 +405,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           _wordTajweedSpans = tajweed;
           _ayahRefs = refs;
           _ayahBoundaries = boundaries;
+          _lineEnds = lineEnds;
           _ayahLabels = labels;
           _ayahMeta = meta;
           _surahStarts = starts;
@@ -1054,6 +1060,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               tajweedEnabled: _tajweedOn,
                               ayahBoundaries: _ayahBoundaries,
                               ayahLabels: _ayahLabels,
+                              lineEnds: _lineEnds,
                               minimumHeight: textHeight,
                               blockHeights: {
                                 for (final e in _surahStarts.entries)

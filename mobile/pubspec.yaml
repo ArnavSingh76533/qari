@@ -96,6 +96,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/quran_corpus.json.gz
+    - assets/mushaf_line_ends.json
     - assets/vocab_curriculum.json
 
   fonts:

@@ -30,26 +30,18 @@ jobs:
       - name: Pub get
         working-directory: mobile
         run: flutter pub get
+      - name: Format changed typography sources
+        working-directory: mobile
+        run: |
+          dart format lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart
+          mkdir -p build/review/formatted
+          cp --parents lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart build/review/formatted/
       - name: Check Dart formatting
         working-directory: mobile
         run: dart format --output=none --set-exit-if-changed lib/data/models/recitation_model.dart lib/data/services/recitation_auth.dart lib/data/services/audio_service.dart lib/data/services/streaming_recitation_service.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/widgets/recitation_results.dart lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart lib/features/home/presentation/pages/home_page.dart test/full_page_recitation_test.dart test/live_recitation_test.dart test/mushaf_modes_test.dart test/recitation_evidence_test.dart lib/features/recitation/presentation/mushaf/mushaf_theme.dart
       - name: Analyze (errors only)
         working-directory: mobile
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Capture printed line metadata
-        run: |
-          mkdir -p mobile/build/review
-          if curl --fail --location --silent --show-error --max-time 30 'https://api.quran.com/api/v4/verses/by_page/3?words=true&word_fields=line_number,page_number&per_page=50' -o mobile/build/review/page3-layout-source.json; then
-          python3 - <<'PY'
-          import json, collections
-          data=json.load(open("mobile/build/review/page3-layout-source.json"))
-          rows=collections.defaultdict(list)
-          for verse in data.get("verses", []):
-              for word in verse.get("words", []):
-                  rows[word.get("line_number")].append((verse["verse_key"], word["position"], word.get("char_type_name")))
-          print("Printed page 3 line positions:",dict(rows))
-          PY
-          fi
       - name: Tests
         working-directory: mobile
         # Some legacy tests are network/timer bound; run the stable suites.

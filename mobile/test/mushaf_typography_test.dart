@@ -24,6 +24,15 @@ void main() {
     final icons = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
+    final flutterRoot = Platform.environment['FLUTTER_ROOT'];
+    if (flutterRoot != null) {
+      final roboto = FontLoader('Roboto')
+        ..addFont(File(
+                '$flutterRoot/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf')
+            .readAsBytes()
+            .then((bytes) => ByteData.sublistView(bytes)));
+      await roboto.load();
+    }
   });
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -104,6 +113,7 @@ void main() {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
+      SharedPreferences.setMockInitialValues({'mushaf_theme_id': 'night'});
       final preview = GlobalKey();
       await tester.pumpWidget(RepaintBoundary(
         key: preview,
