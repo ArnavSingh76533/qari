@@ -202,8 +202,8 @@ class _SurahPlatePainter extends CustomPainter {
     for (var x = inner.left - inner.height; x < inner.right; x += step) {
       canvas.drawLine(Offset(x, inner.bottom),
           Offset(x + inner.height, inner.top), lattice);
-      canvas.drawLine(
-          Offset(x, inner.top), Offset(x + inner.height, inner.bottom), lattice);
+      canvas.drawLine(Offset(x, inner.top),
+          Offset(x + inner.height, inner.bottom), lattice);
     }
     canvas.restore();
 
@@ -256,7 +256,8 @@ class _SurahPlatePainter extends CustomPainter {
       ..cubicTo(l + e * 0.25, cy - hh * 0.2, l + e * 0.35, top, l + e, top)
       ..lineTo(rgt - e, top)
       ..cubicTo(rgt - e * 0.35, top, rgt - e * 0.25, cy - hh * 0.2, rgt, cy)
-      ..cubicTo(rgt - e * 0.25, cy + hh * 0.2, rgt - e * 0.35, bot, rgt - e, bot)
+      ..cubicTo(
+          rgt - e * 0.25, cy + hh * 0.2, rgt - e * 0.35, bot, rgt - e, bot)
       ..lineTo(l + e, bot)
       ..cubicTo(l + e * 0.35, bot, l + e * 0.25, cy + hh * 0.2, l, cy)
       ..close();

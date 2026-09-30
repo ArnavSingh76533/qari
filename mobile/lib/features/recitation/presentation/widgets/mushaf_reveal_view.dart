@@ -144,7 +144,8 @@ class MushafRevealView extends StatelessWidget {
   double _pageFontSize(BuildContext context, double width) {
     final scaler = MediaQuery.textScalerOf(context);
     final cacheKey = (
-      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(',')].join('\u0001'),
+      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(',')]
+          .join('\u0001'),
       '${blocksBefore.keys.join(',')}|${blockHeights.entries.map((e) => '${e.key}:${e.value}').join(',')}',
       width,
       minimumHeight,
@@ -274,33 +275,39 @@ class MushafRevealView extends StatelessWidget {
         ));
       }
     }
-    // Trailing anchor, used only when nothing is active yet (cursor is -1, i.e.
-    // before recitation starts) so the first layout has something measurable.
-    if (cursorKey == null || cursor < 0 || cursor >= words.length) {
-      children.add(
-        SizedBox(key: caretKey, width: 0, height: size),
-      );
-    }
-
     // Every word is present from the first frame, so justification stays
     // stable while verdicts recolour the existing glyphs.
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: minimumHeight),
-        child: Wrap(
-          direction: Axis.horizontal,
-          alignment: minimumHeight > 0
-              ? WrapAlignment.spaceBetween
-              : WrapAlignment.start,
-          runAlignment: minimumHeight > 0
-              ? WrapAlignment.spaceBetween
-              : WrapAlignment.start,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 2,
-          runSpacing: 6,
-          children: children,
-        ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minimumHeight),
+            child: Wrap(
+              direction: Axis.horizontal,
+              alignment: minimumHeight > 0
+                  ? WrapAlignment.spaceBetween
+                  : WrapAlignment.start,
+              runAlignment: minimumHeight > 0
+                  ? WrapAlignment.spaceBetween
+                  : WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 2,
+              runSpacing: 6,
+              children: children,
+            ),
+          ),
+          // A positioned fallback measures the end of the sheet without
+          // adding another Wrap run or shifting words when listening starts.
+          if (caretKey != null &&
+              (cursorKey == null || cursor < 0 || cursor >= words.length))
+            Positioned(
+              bottom: 0,
+              left: 0,
+              child: SizedBox(key: caretKey, width: 0, height: 0),
+            ),
+        ],
       ),
     );
   }
@@ -500,7 +507,7 @@ class _AyahMarker extends StatelessWidget {
 
 TextStyle _arabicStyle(double size, Color? color) =>
     AppTheme.arabicTextStyle(fontSize: size, color: color)
-        .copyWith(fontSize: size);
+        .copyWith(fontSize: size, height: 1.65);
 
 /// "12" -> "١٢". Non-digits pass through unchanged.
 String toArabicIndicDigits(String western) {

@@ -43,7 +43,8 @@ void main() {
     });
 
     test('unknown status falls back to pending', () {
-      final e = RecitationStreamEvent.fromJson({'type': 'word', 'status': 'weird'});
+      final e =
+          RecitationStreamEvent.fromJson({'type': 'word', 'status': 'weird'});
       expect(e.status, LiveWordStatus.pending);
       expect(e.status.isResolved, isFalse);
     });
@@ -80,7 +81,8 @@ void main() {
     expect(find.text('Al-Fatihah'), findsWidgets);
     expect(find.text('Page 1 | Juz 1 | Hizb 1'), findsOneWidget);
     expect(find.text('Hifz'), findsOneWidget);
-    expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'), findsNothing);
+    expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
+        findsNothing);
     // The old Memorization Mode toggle must be GONE.
     expect(find.text('Memorization Mode'), findsNothing);
     expect(find.text('Tajweed colours'), findsNothing);
@@ -101,8 +103,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-          of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
+      find.descendant(of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
       findsOneWidget,
     );
     expect(find.byIcon(Icons.palette_outlined), findsOneWidget);
@@ -157,7 +158,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MushafRevealView(words: const [], statuses: const [], mushaf: MushafTheme.classic),
+          body: MushafRevealView(
+              words: const [], statuses: const [], mushaf: MushafTheme.classic),
         ),
       ),
     );

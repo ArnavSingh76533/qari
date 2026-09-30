@@ -956,7 +956,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   static const _bismillahLineHeight = 1.5;
 
   double _surahOpeningHeight(int surah) =>
-      10 + _surahBannerHeight +
+      10 +
+      _surahBannerHeight +
       (surah == 1 || surah == 9
           ? 8
           : 6 + _bismillahFontSize * _bismillahLineHeight);
@@ -1023,43 +1024,42 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 child: MushafPageFrame(
                   theme: mushaf,
                   padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
-                  child: _loadingPage ||
-                          _words.isEmpty ||
-                          _revealedWords.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          child: Text(
-                            'Loading…',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: mushaf.text.withValues(alpha: 0.5),
+                  child:
+                      _loadingPage || _words.isEmpty || _revealedWords.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 40),
+                              child: Text(
+                                'Loading…',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: mushaf.text.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            )
+                          : MushafRevealView(
+                              words: _revealedWords,
+                              statuses: statuses,
+                              mushaf: mushaf,
+                              cursor: cursor,
+                              tajweedSpans: _revealedTajweedSpans,
+                              tajweedEnabled: _tajweedOn,
+                              ayahBoundaries: _ayahBoundaries,
+                              ayahLabels: _ayahLabels,
+                              minimumHeight: textHeight,
+                              blockHeights: {
+                                for (final e in _surahStarts.entries)
+                                  e.key: _surahOpeningHeight(e.value),
+                              },
+                              caretKey: _caretKeyFallback,
+                              cursorKey: reviewMode ? null : _cursorKey,
+                              reviewMode: reviewMode,
+                              onMistakeTap: onMistakeTap,
+                              hideUnspoken: _mode == RecitationMode.hifz,
+                              blocksBefore: {
+                                for (final e in _surahStarts.entries)
+                                  e.key: _surahOpening(mushaf, e.value),
+                              },
                             ),
-                          ),
-                        )
-                      : MushafRevealView(
-                          words: _revealedWords,
-                          statuses: statuses,
-                          mushaf: mushaf,
-                          cursor: cursor,
-                          tajweedSpans: _revealedTajweedSpans,
-                          tajweedEnabled: _tajweedOn,
-                          ayahBoundaries: _ayahBoundaries,
-                          ayahLabels: _ayahLabels,
-                          minimumHeight: textHeight,
-                          blockHeights: {
-                            for (final e in _surahStarts.entries)
-                              e.key: _surahOpeningHeight(e.value),
-                          },
-                          caretKey: _caretKeyFallback,
-                          cursorKey: reviewMode ? null : _cursorKey,
-                          reviewMode: reviewMode,
-                          onMistakeTap: onMistakeTap,
-                          hideUnspoken: _mode == RecitationMode.hifz,
-                          blocksBefore: {
-                            for (final e in _surahStarts.entries)
-                              e.key: _surahOpening(mushaf, e.value),
-                          },
-                        ),
                 ),
               ),
             ),
