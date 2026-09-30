@@ -40,15 +40,15 @@ jobs:
         run: |
           mkdir -p mobile/build/review
           if curl --fail --location --silent --show-error --max-time 30 'https://api.quran.com/api/v4/verses/by_page/3?words=true&word_fields=line_number,page_number&per_page=50' -o mobile/build/review/page3-layout-source.json; then
-            python3 - <<'PY'
-            import json, collections
-            data=json.load(open("mobile/build/review/page3-layout-source.json"))
-            rows=collections.defaultdict(list)
-            for verse in data.get("verses", []):
-                for word in verse.get("words", []):
-                    rows[word.get("line_number")].append((verse["verse_key"], word["position"], word.get("char_type_name")))
-            print("Printed page 3 line positions:",dict(rows))
-            PY
+          python3 - <<'PY'
+          import json, collections
+          data=json.load(open("mobile/build/review/page3-layout-source.json"))
+          rows=collections.defaultdict(list)
+          for verse in data.get("verses", []):
+              for word in verse.get("words", []):
+                  rows[word.get("line_number")].append((verse["verse_key"], word["position"], word.get("char_type_name")))
+          print("Printed page 3 line positions:",dict(rows))
+          PY
           fi
       - name: Tests
         working-directory: mobile

@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qari/core/theme/app_theme.dart';
-import 'package:qari/data/models/recitation_stream_event.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_page_frame.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import 'package:qari/features/recitation/presentation/pages/live_recitation_page.dart';
@@ -67,7 +66,7 @@ void main() {
       final painter = TextPainter(
         text: TextSpan(
           text: word,
-          style: AppTheme.arabicTextStyle(fontSize: 20).copyWith(height: 1.65),
+          style: AppTheme.arabicTextStyle(fontSize: 20).copyWith(fontSize: 20, height: 1.65),
         ),
         textDirection: TextDirection.rtl,
       )..layout();
