@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qari/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_page_frame.dart';
+import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import 'package:qari/features/recitation/presentation/pages/live_recitation_page.dart';
 import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
@@ -222,12 +223,15 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('tajweed_colors_enabled', true);
     await tester.pumpWidget(const MaterialApp(
-      home: LiveRecitationPage(surahNumber: 80,
-          initialMode: RecitationMode.tilawat),
+      home: LiveRecitationPage(
+          surahNumber: 80, initialMode: RecitationMode.tilawat),
     ));
     await tester.pumpAndSettle();
-    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
-        .tajweedEnabled, isTrue);
+    expect(
+        tester
+            .widget<MushafRevealView>(find.byType(MushafRevealView))
+            .tajweedEnabled,
+        isTrue);
     final before = tester.getRect(find.text('٤٠').last);
     await tester.tap(find.byTooltip('Mushaf appearance'));
     await tester.pumpAndSettle();
@@ -235,10 +239,32 @@ void main() {
     await tester.pumpAndSettle();
     Navigator.of(tester.element(find.text('Tajweed colours'))).pop();
     await tester.pumpAndSettle();
-    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
-        .tajweedEnabled, isFalse);
+    expect(
+        tester
+            .widget<MushafRevealView>(find.byType(MushafRevealView))
+            .tajweedEnabled,
+        isFalse);
     expect(tester.getRect(find.text('٤٠').last), before,
         reason: 'colour changes must preserve the Quran word layout');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('appearance menu changes the Quran page theme',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Mushaf appearance'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Page theme'));
+    await tester.pumpAndSettle();
+    expect(find.text(MushafTheme.night.label), findsOneWidget);
+    await tester.tap(find.text(MushafTheme.night.label));
+    await tester.pumpAndSettle();
+    expect(tester.widget<MushafPageFrame>(find.byType(MushafPageFrame)).theme,
+        MushafTheme.night);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -251,7 +277,8 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('tajweed_colors_enabled', true);
     final data = await rootBundle.load('assets/quran_corpus.json.gz');
-    final corpus = jsonDecode(utf8.decode(gzip.decode(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes))))
+    final corpus = jsonDecode(utf8.decode(gzip.decode(
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes))))
         as Map<String, dynamic>;
     final starts = <int, (int, int)>{};
     for (final surah in corpus['surahs'] as List<dynamic>) {
@@ -273,19 +300,26 @@ void main() {
         await tester.pumpAndSettle();
       }
       expect(find.textContaining('Page $page |'), findsOneWidget);
-      final reveal = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
-      expect(reveal.tajweedEnabled, isTrue, reason: 'page $page restores Tajweed');
-      final marker = find.descendant(
-        of: find.byType(MushafRevealView),
-        matching: find.text(toArabicIndicDigits(reveal.ayahLabels.last)),
-      ).last;
+      final reveal =
+          tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+      expect(reveal.tajweedEnabled, isTrue,
+          reason: 'page $page restores Tajweed');
+      final marker = find
+          .descendant(
+            of: find.byType(MushafRevealView),
+            matching: find.text(toArabicIndicDigits(reveal.ayahLabels.last)),
+          )
+          .last;
       final controls = tester.getRect(find.byType(FloatingRecitationBar));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       final lastBottom = tester.getRect(marker).bottom;
       if (lastBottom > controls.top || position.maxScrollExtent > 2) {
-        final first = find.descendant(of: find.byType(MushafRevealView),
-            matching: find.text(reveal.words.first)).first;
+        final first = find
+            .descendant(
+                of: find.byType(MushafRevealView),
+                matching: find.text(reveal.words.first))
+            .first;
         final font = tester.widget<Text>(first).style?.fontSize;
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
