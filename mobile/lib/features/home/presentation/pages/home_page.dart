@@ -150,7 +150,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       onTap: () async {
         await Haptics.vibrate(HapticsType.medium);
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const LiveRecitationPage()),
+          MaterialPageRoute(builder: (_) => const LiveRecitationPage(
+            initialMode: RecitationMode.hifz,
+          )),
         );
       },
       child: Container(

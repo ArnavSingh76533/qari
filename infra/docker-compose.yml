@@ -1,10 +1,18 @@
+x-auth-environment: &auth-environment
+  # Deliberately required: both APIs must use the same deployment signing key.
+  QARI_JWT_SECRET_KEY: ${QARI_JWT_SECRET_KEY:?Set QARI_JWT_SECRET_KEY in infra/.env}
+  QARI_JWT_ALGORITHM: ${QARI_JWT_ALGORITHM:-HS256}
+  QARI_JWT_ISSUER: ${QARI_JWT_ISSUER:-qari-core-api}
+  QARI_ENVIRONMENT: production
+  QARI_DEBUG: "false"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: qari
-      POSTGRES_PASSWORD: qari
+      POSTGRES_PASSWORD: ${QARI_POSTGRES_PASSWORD:?Set QARI_POSTGRES_PASSWORD in infra/.env}
       POSTGRES_DB: qari
     # No host port publish — only the compose network needs it (localhost-only DB).
     volumes:
@@ -37,20 +45,19 @@ services:
     ports:
       - "127.0.0.1:8010:8000"
     environment:
-      QARI_DATABASE_URL: postgresql+asyncpg://qari:qari@postgres:5432/qari
+      <<: *auth-environment
+      QARI_APP_NAME: ${QARI_JWT_ISSUER:-qari-core-api}
+      QARI_DATABASE_URL: ${QARI_DATABASE_URL:?Set QARI_DATABASE_URL in infra/.env}
       QARI_REDIS_URL: redis://redis:6379/0
-      QARI_ENVIRONMENT: dev
-      QARI_CORS_ORIGINS: '["https://qari.pneumetron.com"]'
+      QARI_CORS_ORIGINS: ${QARI_CORS_ORIGINS:-[]}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ../backend/core_api:/app
-      - ../backend/shared:/app/shared
       - ../releases:/app/releases:ro
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
   recitation-api:
     build:
@@ -58,11 +65,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *auth-environment
       QARI_REDIS_URL: redis://redis:6379/1
       QARI_CORE_API_BASE_URL: http://core-api:8000
-      QARI_ENVIRONMENT: dev
-      QARI_CORS_ORIGINS: '["https://qari.pneumetron.com"]'
-      QARI_RECITATION_API_PUBLIC_URL: https://qari.pneumetron.com
+      QARI_CORS_ORIGINS: ${QARI_CORS_ORIGINS:-[]}
+      QARI_RECITATION_API_PUBLIC_URL: ${QARI_RECITATION_API_PUBLIC_URL:?Set the public recitation API URL in infra/.env}
       PYTHONPATH: /app
       QARI_ML_USE_STUB: "false"
       # Trained Qari V50 model (LoRA merged + CT2 INT8, built from local files).
@@ -91,8 +98,7 @@ services:
         condition: service_healthy
     volumes:
       - qari_audio:/tmp/qari_audio
-      - ../backend/recitation_api:/app
-      - ../ml:/app/ml
+      - ../ml:/app/ml:ro
       - ../backend/recitation_api/reference_data:/app/reference_data:ro
       - ${QARI_MODELS_DIR:-../models}:/app/models:ro
     ports:
@@ -105,12 +111,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *auth-environment
       QARI_REDIS_URL: redis://redis:6379/1
-      QARI_ENVIRONMENT: dev
       QARI_ML_USE_STUB: "false"
       QARI_REFERENCE_DATA_DIR: /app/reference_data
       QARI_CORE_API_BASE_URL: http://core-api:8000
-      QARI_RECITATION_API_PUBLIC_URL: https://qari.pneumetron.com
+      QARI_RECITATION_API_PUBLIC_URL: ${QARI_RECITATION_API_PUBLIC_URL:?Set the public recitation API URL in infra/.env}
       # Trained Qari V50 model (LoRA merged + CT2 INT8, built from local files).
       QARI_FASTERWHISPER_MODEL_DIR: /app/models/qari-v50-ct2
       QARI_BATCH_ANALYSIS_TIMEOUT_SEC: "90"
@@ -123,8 +129,7 @@ services:
         condition: service_healthy
     volumes:
       - qari_audio:/tmp/qari_audio
-      - ../backend/recitation_api:/app
-      - ../ml:/app/ml
+      - ../ml:/app/ml:ro
       - ../backend/recitation_api/reference_data:/app/reference_data:ro
       - ${QARI_MODELS_DIR:-../models}:/app/models:ro
     command: python -m app.workers.fast_inference_worker

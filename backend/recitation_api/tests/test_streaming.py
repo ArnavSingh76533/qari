@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 import app.services.streaming_session as ss
 from app.main import app
+from tests.support import auth_headers
 
 
 REFERENCE = ["بسم", "الله", "الرحمن", "الرحيم"]
@@ -50,7 +51,7 @@ def _pcm_seconds(seconds: float, sr: int = 16000, *, silent: bool = False) -> by
 
 
 def test_stream_handshake_sends_ready(stub_stream):
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({"type": "start", "surah_number": 1, "ayah_number": 1,
                       "mode": "memorization"})
@@ -74,7 +75,7 @@ def test_stream_handshake_sends_ready(stub_stream):
 
 def test_stream_reveals_words_live(stub_stream):
     """Streaming audio produces word 'match' events as words are revealed."""
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({"type": "start", "surah_number": 1, "ayah_number": 1})
         ready = ws.receive_json()
@@ -85,7 +86,11 @@ def test_stream_reveals_words_live(stub_stream):
 
         matched = []
         # Collect the word events emitted for this chunk.
-        for _ in range(4):
+        for index in range(4):
+            if index == 3:
+                # The live matcher resolves at most three reference words in
+                # its first window; another audio interval advances the tail.
+                ws.send_bytes(_pcm_seconds(1.3))
             evt = ws.receive_json()
             assert evt["type"] == "word"
             # Blueprint wire status is "match" (not "matched").
@@ -104,7 +109,7 @@ def test_stream_reveals_words_live(stub_stream):
 
 def test_stream_final_marks_unrecited_skipped(stub_stream):
     """Stopping early leaves un-recited words flagged (not falsely correct)."""
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({"type": "start", "surah_number": 1, "ayah_number": 1})
         ws.receive_json()  # ready
@@ -125,7 +130,7 @@ def test_stream_silence_does_not_auto_complete_ayah(stub_stream):
     words based on audio duration alone — so room tone / breath accumulated and
     the ayah completed even though the user said nothing.
     """
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({"type": "start", "surah_number": 1, "ayah_number": 1})
         ws.receive_json()  # ready
@@ -159,7 +164,7 @@ def test_stream_silence_does_not_auto_complete_ayah(stub_stream):
 
 
 def test_stream_requires_start_first(stub_stream):
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({"type": "audio"})  # wrong first message
         msg = ws.receive_json()
@@ -168,7 +173,7 @@ def test_stream_requires_start_first(stub_stream):
 
 def test_stream_multi_ayah_sequence(stub_stream):
     """An explicit `ayahs` list is concatenated into one continuous word list."""
-    client = TestClient(app)
+    client = TestClient(app, headers=auth_headers())
     with client.websocket_connect("/ws/recitation/stream") as ws:
         ws.send_json({
             "type": "start",

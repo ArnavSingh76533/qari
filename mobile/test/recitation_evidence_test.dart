@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qari/data/models/recitation_model.dart';
 import 'package:qari/data/services/streaming_recitation_service.dart';
+import 'package:qari/data/services/recitation_auth.dart';
 import 'package:qari/features/recitation/presentation/widgets/recitation_results.dart';
 
 Map<String, dynamic> payload() => {
@@ -21,6 +22,21 @@ void main() {
     final result = RecitationResult.fromJson(raw);
     expect(result.toJson()['tajweed_available'], true);
     expect(result.copyWith(feedback: 'Saved').toJson()['pronunciation_available'], false);
+  });
+
+  test('recording authentication never leaks to a CDN or another origin', () {
+    const base = 'https://qari.example/v1';
+    Map<String, String> headers(String url) => recitationAudioHeaders(url, 'user-jwt', apiBaseUrl: base);
+    expect(headers('$base/recitations/session/audio'), {'Authorization': 'Bearer user-jwt'});
+    for (final url in [
+      'https://everyayah.com/data/001001.mp3',
+      'http://qari.example/v1/recitations/session/audio',
+      'https://qari.example:8443/v1/recitations/session/audio',
+      'https://other.example/v1/recitations/session/audio',
+      '$base/unrelated/audio',
+    ]) {
+      expect(headers(url), isEmpty, reason: url);
+    }
   });
 
   testWidgets('unassessed metrics are never presented as failed scores', (tester) async {

@@ -18,6 +18,7 @@ build/
 *.so
 .env
 .env.*
+!.env.example
 venv/
 .venv/
 

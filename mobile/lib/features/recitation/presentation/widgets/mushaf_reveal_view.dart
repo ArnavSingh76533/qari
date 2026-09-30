@@ -94,6 +94,11 @@ class MushafRevealView extends StatelessWidget {
   /// surah boundary opens the new surah inline, like a printed Mushaf.
   final Map<int, Widget> blocksBefore;
 
+  /// Available paper height. Short pages spread their lines over the sheet;
+  /// dense pages use a smaller font and remain scrollable at large text sizes.
+  final double minimumHeight;
+  final Map<int, double> blockHeights;
+
   const MushafRevealView({
     super.key,
     required this.words,
@@ -111,6 +116,8 @@ class MushafRevealView extends StatelessWidget {
     this.onMistakeTap,
     this.hideUnspoken = false,
     this.blocksBefore = const {},
+    this.minimumHeight = 0,
+    this.blockHeights = const {},
   });
 
   String? _labelForBoundary(int wordIndex) {
@@ -121,6 +128,65 @@ class MushafRevealView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final size = minimumHeight > 0
+          ? _pageFontSize(context, constraints.maxWidth)
+          : fontSize;
+      return _buildFlow(context, size);
+    });
+  }
+
+  // Measure the same isolated word glyphs used by the flow, rather than
+  // guessing from character counts. Quran text and verse order never change.
+  double _pageFontSize(BuildContext context, double width) {
+    final scaler = MediaQuery.textScalerOf(context);
+    double heightAt(double size) {
+      var usedWidth = 0.0;
+      var rowHeight = 0.0;
+      var totalHeight = 0.0;
+      void finishRow() {
+        if (rowHeight == 0) return;
+        totalHeight += rowHeight + 6;
+        usedWidth = rowHeight = 0;
+      }
+      void addText(String text) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: _arabicStyle(size, mushaf.text)),
+          textDirection: TextDirection.rtl,
+          textScaler: scaler,
+        )..layout();
+        final wordWidth = painter.width + 4;
+        if (usedWidth > 0 && usedWidth + 2 + wordWidth > width) finishRow();
+        usedWidth += (usedWidth > 0 ? 2 : 0) + wordWidth;
+        if (painter.height > rowHeight) rowHeight = painter.height;
+        painter.dispose();
+      }
+      for (var i = 0; i < words.length; i++) {
+        if (blocksBefore.containsKey(i)) {
+          finishRow();
+          totalHeight += (blockHeights[i] ?? 92) + 6;
+        }
+        addText(words[i]);
+        final label = _labelForBoundary(i);
+        if (label != null) addText(toArabicIndicDigits(label));
+      }
+      finishRow();
+      return totalHeight - 6;
+    }
+    var low = 18.0;
+    var high = 40.0;
+    for (var i = 0; i < 7; i++) {
+      final mid = (low + high) / 2;
+      if (heightAt(mid) <= minimumHeight) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
+  Widget _buildFlow(BuildContext context, double size) {
     final theme = Theme.of(context);
 
     // A single RTL Wrap flowing right→left, wrapping line-by-line like a book.
@@ -165,7 +231,7 @@ class MushafRevealView extends StatelessWidget {
           tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
               ? tajweedSpans[i]
               : null,
-          fontSize: fontSize,
+          fontSize: size,
           theme: theme,
           mushaf: mushaf,
         );
@@ -187,7 +253,7 @@ class MushafRevealView extends StatelessWidget {
           label: boundaryLabel,
           theme: theme,
           mushaf: mushaf,
-          fontSize: fontSize,
+          fontSize: size,
         ));
       }
     }
@@ -195,28 +261,25 @@ class MushafRevealView extends StatelessWidget {
     // before recitation starts) so the first layout has something measurable.
     if (cursorKey == null || cursor < 0 || cursor >= words.length) {
       children.add(
-        SizedBox(key: caretKey, width: 0, height: fontSize),
+        SizedBox(key: caretKey, width: 0, height: size),
       );
     }
 
-    // Natural word spacing (WrapAlignment.start), NOT justified.
-    //
-    // Justified Mushaf typesetting stretches every line to the full measure.
-    // On a LIVE page the newest word lands on the final line, so justification
-    // would re-space that line on every single event — words visibly shuffle
-    // several times per second while reciting, which is both unreadable and a
-    // relayout of the whole page on each frame. Natural spacing keeps the
-    // reading position stable; a printed-page justification pass can be added
-    // later for the non-live reader if the visual gain is judged worth it.
+    // Every word is present from the first frame, so justification stays
+    // stable while verdicts recolour the existing glyphs.
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Wrap(
-        direction: Axis.horizontal,
-        alignment: WrapAlignment.start,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 2,
-        runSpacing: 6,
-        children: children,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: minimumHeight),
+        child: Wrap(
+          direction: Axis.horizontal,
+          alignment: minimumHeight > 0 ? WrapAlignment.spaceBetween : WrapAlignment.start,
+          runAlignment: minimumHeight > 0 ? WrapAlignment.spaceBetween : WrapAlignment.start,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 2,
+          runSpacing: 6,
+          children: children,
+        ),
       ),
     );
   }
@@ -305,7 +368,7 @@ class _RevealedWord extends StatelessWidget {
           )
         : Text(
             text,
-            style: AppTheme.arabicTextStyle(fontSize: fontSize, color: _ink),
+            style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
           );
 
@@ -330,6 +393,8 @@ class _RevealedWord extends StatelessWidget {
                 ),
               ]
             : null,
+      ),
+      foregroundDecoration: BoxDecoration(
         border: underline
             ? Border(
                 bottom: BorderSide(
@@ -371,7 +436,7 @@ class _RevealedWord extends StatelessWidget {
       children.add(
         TextSpan(
           text: text.substring(i, j),
-          style: AppTheme.arabicTextStyle(fontSize: fontSize, color: color),
+          style: _arabicStyle(fontSize, color),
         ),
       );
       i = j;
@@ -407,15 +472,16 @@ class _AyahMarker extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Text(
           toArabicIndicDigits(label),
-          style: AppTheme.arabicTextStyle(
-            fontSize: fontSize,
-            color: mushaf.accent,
-          ),
+          style: _arabicStyle(fontSize, mushaf.accent),
         ),
       ),
     );
   }
 }
+
+TextStyle _arabicStyle(double size, Color? color) =>
+    AppTheme.arabicTextStyle(fontSize: size, color: color)
+        .copyWith(fontSize: size);
 
 /// "12" -> "١٢". Non-digits pass through unchanged.
 String toArabicIndicDigits(String western) {

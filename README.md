@@ -82,13 +82,15 @@ asset, so **rebuild the APK** after regenerating the corpus.
 
 ### Backend (core-api + recitation-api)
 
+Configure `infra/.env` from `infra/.env.example` first. Both APIs require the
+same explicit JWT signing key. See [deployment setup and upgrade notes](infra/README.md)
+for production configuration and existing-token compatibility.
+
 ```bash
 cd infra
-docker-compose up -d postgres redis
-cd ../backend/core_api
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+docker compose config --quiet
+docker compose up -d --build
+docker compose exec core-api alembic upgrade head
 ```
 
 ### ETL Pipeline

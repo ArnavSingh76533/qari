@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../models/recitation_stream_event.dart';
+import 'local_storage_service.dart';
 
 /// Native side-channel to the `MicForegroundService` (microphone-typed Android
 /// foreground service). Starting it is what makes the OS grant capture focus on
@@ -205,6 +206,12 @@ class StreamingRecitationService {
     _audioFocusGranted = null;
     _firstChunkAt = null;
 
+    final token = await LocalStorageService().getAuthToken();
+    if (token == null || token.trim().isEmpty) {
+      _setState(LiveConnectionState.error);
+      throw StreamingConnectionException('Sign in to start reciting.');
+    }
+
     if (!await hasPermission()) {
       final granted = await requestPermission();
       if (!granted) {
@@ -225,6 +232,7 @@ class StreamingRecitationService {
       _socket = await WebSocket.connect(
         wsUrl,
         customClient: httpClient,
+        headers: {HttpHeaders.authorizationHeader: 'Bearer $token'},
       ).timeout(const Duration(seconds: 15), onTimeout: () {
         throw StreamingConnectionException('WebSocket connect timed out');
       });

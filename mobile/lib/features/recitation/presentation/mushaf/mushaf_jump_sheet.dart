@@ -32,6 +32,7 @@ class MushafJumpSheet extends StatefulWidget {
     required this.initialAyahCount,
     this.totalSurahs = 114,
     this.onPick,
+    this.pageMode = false,
   });
 
   final MushafTheme theme;
@@ -45,6 +46,7 @@ class MushafJumpSheet extends StatefulWidget {
 
   final int totalSurahs;
   final ValueChanged<MushafJumpTarget>? onPick;
+  final bool pageMode;
 
   /// Shows the sheet and returns the chosen target, or null if dismissed.
   static Future<MushafJumpTarget?> show(
@@ -55,6 +57,7 @@ class MushafJumpSheet extends StatefulWidget {
     required int initialAyahTo,
     required int initialAyahCount,
     int totalSurahs = 114,
+    bool pageMode = false,
   }) {
     return showModalBottomSheet<MushafJumpTarget>(
       context: context,
@@ -71,6 +74,7 @@ class MushafJumpSheet extends StatefulWidget {
         initialAyahTo: initialAyahTo,
         initialAyahCount: initialAyahCount,
         totalSurahs: totalSurahs,
+        pageMode: pageMode,
         onPick: (target) => Navigator.of(ctx).pop(target),
       ),
     );
@@ -188,7 +192,7 @@ class _MushafJumpSheetState extends State<MushafJumpSheet> {
             children: [
               Expanded(
                 child: _MushafNumberField(
-                  label: 'From ayah',
+                  label: widget.pageMode ? 'Ayah' : 'From ayah',
                   value: _from,
                   count: _count,
                   theme: t,
@@ -198,11 +202,11 @@ class _MushafJumpSheetState extends State<MushafJumpSheet> {
                   }),
                 ),
               ),
-              Padding(
+              if (!widget.pageMode) Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Text('→', style: TextStyle(color: t.text, fontSize: 18)),
               ),
-              Expanded(
+              if (!widget.pageMode) Expanded(
                 child: _MushafNumberField(
                   label: 'To ayah',
                   value: _to,
@@ -237,7 +241,8 @@ class _MushafJumpSheetState extends State<MushafJumpSheet> {
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () => widget.onPick?.call(
-              MushafJumpTarget(surah: _surah, ayahFrom: _from, ayahTo: _to),
+              MushafJumpTarget(surah: _surah, ayahFrom: _from,
+                ayahTo: widget.pageMode ? _from : _to),
             ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),

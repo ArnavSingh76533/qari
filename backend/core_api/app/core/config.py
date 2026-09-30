@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     redis_max_connections: int = 50
 
     # --- JWT ---
-    jwt_secret_key: str = "change-me-in-production"
+    jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     firebase_project_id: Optional[str] = None
 
     # --- CORS ---
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = []
 
     # --- Rate limiting ---
     rate_limit_enabled: bool = True
@@ -70,6 +70,29 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",")]
         return v
 
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_secret(cls, value: str) -> str:
+        if len(value.strip().encode("utf-8")) < 32:
+            raise ValueError("QARI_JWT_SECRET_KEY must contain at least 32 bytes; supply a securely generated secret")
+        return value
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, value: str) -> str:
+        if value not in {"HS256", "HS384", "HS512"}:
+            raise ValueError("QARI_JWT_ALGORITHM must be a supported shared-secret HMAC algorithm")
+        return value
+
+    @model_validator(mode="after")
+    def validate_production_settings(self):
+        if self.is_production:
+            if self.debug:
+                raise ValueError("QARI_DEBUG cannot be enabled in production")
+            if "*" in self.cors_origins:
+                raise ValueError("Production CORS requires explicit origins")
+        return self
+
     @property
     def database_url_sync(self) -> str:
         """Sync URL for Alembic / migrations."""
@@ -77,7 +100,7 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.environment == "production"
+        return self.environment.lower() not in {"dev", "development", "test"}
 
 
 @lru_cache

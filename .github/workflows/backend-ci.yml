@@ -1,0 +1,67 @@
+name: Backend CI
+
+on:
+  push:
+    paths: ["backend/**", "ml/**", "api/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    paths: ["backend/**", "ml/**", "api/**", ".github/workflows/backend-ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  recitation-and-ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r backend/recitation_api/requirements.txt numpy scipy soundfile requests pyyaml
+      - name: Recitation API
+        working-directory: backend/recitation_api
+        env:
+          PYTHONPATH: ../..
+        run: python -m pytest -q
+      - name: Independent recognition, alignment and legacy fail-closed API
+        run: python -m pytest -q ml/tests api/tests
+
+  core-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: qari_test
+          POSTGRES_USER: qari
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      QARI_ENVIRONMENT: test
+      QARI_DEBUG: "true"
+      QARI_JWT_SECRET_KEY: ci-test-only-signing-key-for-security-regressions-2026
+      QARI_DATABASE_URL: postgresql+asyncpg://qari:ci-test-only@localhost:5432/qari_test
+      QARI_REDIS_URL: redis://localhost:6379/1
+      QARI_RATE_LIMIT_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r backend/core_api/requirements.txt
+      - name: Database migrations
+        working-directory: backend/core_api
+        run: alembic upgrade head
+      - name: Core API
+        working-directory: backend/core_api
+        run: python -m pytest -q

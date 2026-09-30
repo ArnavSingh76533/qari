@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -53,10 +56,22 @@ void main() {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(const MaterialApp(
+      final preview = GlobalKey();
+      await tester.pumpWidget(RepaintBoundary(key: preview, child: const MaterialApp(
         home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
-      ));
+      )));
       await tester.pumpAndSettle();
+      if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
+        final boundary = preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          final file = File('build/review/quran-${size.width.toInt()}.png');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
       final page = tester.getRect(find.byType(MushafPageFrame));
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
       expect(page.height, greaterThan(size.height * .70),

@@ -8,6 +8,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from tests.support import auth_headers
 
 
 def _make_wav(sample_rate: int = 16000, channels: int = 1, bits_per_sample: int = 16, duration_sec: float = 1.0) -> bytes:
@@ -39,7 +40,7 @@ def _make_wav(sample_rate: int = 16000, channels: int = 1, bits_per_sample: int 
 async def client():
     """Yield an async HTTP test client."""
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=auth_headers()) as ac:
         yield ac
 
 
@@ -117,7 +118,7 @@ async def test_get_nonexistent_session(client: AsyncClient):
     resp = await client.get(f"/v1/recitations/{fake_id}")
     assert resp.status_code == 404
     data = resp.json()
-    assert data["title"] == "Not Found"
+    assert data["detail"]["title"] == "Not Found"
 
 
 @pytest.mark.asyncio

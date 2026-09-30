@@ -89,8 +89,11 @@ async def test_unauthorized_flashcards(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_auth_exchange_invalid_token(client: AsyncClient):
-    """Auth exchange with invalid token should return 401."""
+async def test_auth_exchange_invalid_token(client: AsyncClient, monkeypatch):
+    """A rejected Firebase token returns 401 without external credential lookup."""
+    from app.api.routes import users
+
+    monkeypatch.setattr(users, "verify_firebase_token", lambda token: None)
     resp = await client.post(
         "/v1/users/auth/exchange",
         json={"firebase_token": "invalid-token"},

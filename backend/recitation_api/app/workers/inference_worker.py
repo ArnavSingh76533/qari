@@ -401,6 +401,9 @@ def _build_result_dict(
     feedback_urdu: Optional[str],
     duration_seconds: int,
     confidence: float,
+    pronunciation_available: bool = False,
+    tajweed_available: bool = False,
+    fluency_available: bool = False,
 ) -> dict:
     """Assemble the mobile-shaped result dict (RecitationAnalysisResult)."""
     return {
@@ -412,6 +415,9 @@ def _build_result_dict(
         "tajweed_score": round(tajweed, 4),
         "fluency_score": round(fluency, 4),
         "accuracy_score": round(accuracy, 4),
+        "pronunciation_available": pronunciation_available,
+        "tajweed_available": tajweed_available,
+        "fluency_available": fluency_available,
         "word_verdicts": word_verdicts,
         "reference_audio_url": reference_audio_url,
         "user_audio_url": user_audio_url,

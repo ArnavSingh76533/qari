@@ -19,6 +19,7 @@ import redis.asyncio as redis
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.security import user_id_from_authorization, verify_access_token
 from app.services.streaming_session import StreamingRecitationSession
 
 logger = get_logger(__name__)
@@ -73,7 +74,11 @@ async def recitation_stream(websocket: WebSocket):
 
         {"type": "start", "surah_number": 1, "ayah_number": 1,
          "ayah_from": 1, "ayah_to": 1, "mode": "memorization"|"tracking",
-         "sample_rate": 16000}
+         "sample_rate": 16000, "access_token": "<backend JWT>"}
+
+    Authenticate with an Authorization: Bearer upgrade header, or include
+    access_token in the first message for browser clients. Tokens in query
+    strings are not accepted.
 
     server → client::
 
@@ -98,11 +103,21 @@ async def recitation_stream(websocket: WebSocket):
     client → server: ``{"type": "stop"}`` (or disconnect) → server replies with
     ``{"type": "final", "result": <RecitationAnalysisResult>}`` and closes.
     """
+    authorization = websocket.headers.get("authorization")
+    user_id = user_id_from_authorization(authorization)
+    if authorization and user_id is None:
+        await _safe_close(websocket, code=4401)
+        return
     await websocket.accept()
 
     # --- Handshake: wait for the start message ---
     try:
-        start = await websocket.receive_json()
+        start = await asyncio.wait_for(
+            websocket.receive_json(), timeout=settings.websocket_start_timeout_sec,
+        )
+    except asyncio.TimeoutError:
+        await _safe_close(websocket, code=4401)
+        return
     except (WebSocketDisconnect, json.JSONDecodeError, RuntimeError):
         await _safe_close(websocket)
         return
@@ -113,6 +128,12 @@ async def recitation_stream(websocket: WebSocket):
             "detail": "First message must be {'type': 'start', ...}",
         })
         await _safe_close(websocket, code=4000)
+        return
+
+    if user_id is None:
+        user_id = verify_access_token(start.get("access_token"))
+    if user_id is None:
+        await _safe_close(websocket, code=4401)
         return
 
     surah = int(start.get("surah_number", 1))
@@ -149,6 +170,28 @@ async def recitation_stream(websocket: WebSocket):
             "type": "error",
             "detail": str(exc) or "Live recitation could not be started.",
         })
+        await _safe_close(websocket, code=1011)
+        return
+
+    # Bind ownership before acknowledging or accepting audio frames. Session
+    # finalization merges this hash, preserving the verified owner field.
+    r = _get_redis()
+    try:
+        await r.hset(
+            f"qari:recitation:session:{session.session_id}",
+            mapping={
+                "session_id": session.session_id,
+                "user_id": user_id,
+                "status": "processing",
+                "source": "stream",
+                "surah_number": str(session.surah),
+                "ayah_from": str(session.ayah_from),
+                "ayah_to": str(session.ayah_to),
+            },
+        )
+        await r.expire(f"qari:recitation:session:{session.session_id}", 86400)
+    except Exception:
+        logger.error("ws.stream.owner_storage_failed", session_id=session.session_id)
         await _safe_close(websocket, code=1011)
         return
 
@@ -239,20 +282,19 @@ async def recitation_websocket(websocket: WebSocket, session_id: str):
     3. Forwards progress updates and word results to the client.
     4. Closes when the session reaches a terminal state (completed/failed).
     """
-    await websocket.accept()
+    user_id = user_id_from_authorization(websocket.headers.get("authorization"))
+    if user_id is None:
+        await _safe_close(websocket, code=4401)
+        return
     r = _get_redis()
 
     # --- Validate session ---
     session_data = await r.hgetall(f"qari:recitation:session:{session_id}")
-    if not session_data:
-        await websocket.send_json({
-            "type": "about:blank",
-            "title": "Not Found",
-            "status": 404,
-            "detail": f"Recitation session '{session_id}' not found",
-        })
-        await websocket.close(code=4004)
+    if not session_data or session_data.get("user_id") != user_id:
+        await _safe_close(websocket, code=4404)
         return
+
+    await websocket.accept()
 
     current_status = session_data.get("status", "queued")
 

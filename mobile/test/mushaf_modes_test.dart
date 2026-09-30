@@ -70,7 +70,8 @@ Set<Color> _washes() => {
 int _underlineCount(Color color) {
   var n = 0;
   for (final e in find.byType(Container).evaluate()) {
-    final d = (e.widget as Container).decoration;
+    final container = e.widget as Container;
+    final d = container.foregroundDecoration ?? container.decoration;
     if (d is BoxDecoration && d.border is Border) {
       if ((d.border! as Border).bottom.color.toARGB32() ==
           color.withValues(alpha: 0.9).toARGB32()) {
@@ -197,11 +198,8 @@ void main() {
       expect(_inkOf('٧'), isNot(null));
       expect(_inkOf('٧')!.a, greaterThan(0));
 
-      // Toggling to Tilawat reveals the full page.
-      await tester.tap(find.text('Hifz'));
-      await tester.pumpAndSettle();
-      expect(find.text('Tilawat'), findsOneWidget);
-      expect(_inkOf(view.words.first)!.a, 1);
+      // The Hifz entry has no switch into the separate Tilawat section.
+      expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'), findsNothing);
     });
   });
 

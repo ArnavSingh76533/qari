@@ -231,6 +231,7 @@ class _ScoreHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text('Word accuracy', style: theme.textTheme.labelSmall),
                 Text(
                   result.gradeLabel,
                   style: theme.textTheme.headlineSmall?.copyWith(
@@ -276,31 +277,27 @@ class _SubScores extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scores = <Widget>[
+      if (result.pronunciationAvailable)
+        _SubScoreCard(label: 'Pronunciation', score: result.pronunciationScore, theme: theme),
+      if (result.tajweedAvailable)
+        _SubScoreCard(label: 'Tajweed', score: result.tajweedScore, theme: theme),
+      if (result.fluencyAvailable)
+        _SubScoreCard(label: 'Fluency', score: result.fluencyScore, theme: theme),
+    ];
+    if (scores.isEmpty) {
+      return Text('Pronunciation, Tajweed and fluency were not assessed.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: .6),
+        ),
+      );
+    }
     return Row(
       children: [
-        Expanded(
-          child: _SubScoreCard(
-            label: 'Pronunciation',
-            score: result.pronunciationScore,
-            theme: theme,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _SubScoreCard(
-            label: 'Tajweed',
-            score: result.tajweedScore,
-            theme: theme,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _SubScoreCard(
-            label: 'Fluency',
-            score: result.fluencyScore,
-            theme: theme,
-          ),
-        ),
+        for (var i = 0; i < scores.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: scores[i]),
+        ],
       ],
     );
   }
