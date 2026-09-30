@@ -324,10 +324,12 @@ void main() {
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
       }
       final frame = tester.getRect(find.byType(MushafPageFrame));
-      for (final element in find.descendant(
-        of: find.byType(MushafRevealView),
-        matching: find.byType(Text),
-      ).evaluate()) {
+      for (final element in find
+          .descendant(
+            of: find.byType(MushafRevealView),
+            matching: find.byType(Text),
+          )
+          .evaluate()) {
         final rect = tester.getRect(find.byWidget(element.widget));
         expect(rect.left, greaterThanOrEqualTo(frame.left),
             reason: 'page $page');
