@@ -34,6 +34,12 @@ jobs:
         working-directory: mobile
         run: |
           dart format lib/data/models/recitation_model.dart lib/data/services/recitation_auth.dart lib/data/services/audio_service.dart lib/data/services/streaming_recitation_service.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/widgets/recitation_results.dart lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart lib/features/home/presentation/pages/home_page.dart test/full_page_recitation_test.dart test/live_recitation_test.dart test/mushaf_modes_test.dart test/recitation_evidence_test.dart
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          for name in ["lib/data/models/recitation_model.dart","lib/data/services/recitation_auth.dart","lib/data/services/audio_service.dart","lib/data/services/streaming_recitation_service.dart","lib/features/recitation/presentation/pages/live_recitation_page.dart","lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart","lib/features/recitation/presentation/widgets/recitation_results.dart","lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart","lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart","lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart","lib/features/home/presentation/pages/home_page.dart","test/full_page_recitation_test.dart","test/live_recitation_test.dart","test/mushaf_modes_test.dart","test/recitation_evidence_test.dart"]:
+              print('QARI_FORMATTED ' + name + ' ' + base64.b64encode(Path(name).read_bytes()).decode())
+          PY
       - name: Review sources
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,6 +84,18 @@ jobs:
             test/word_view_state_test.dart \
             test/audio_frame_contract_test.dart \
             test/corpus_tashkeel_test.dart
+      - name: Inspect Quran previews
+        if: always()
+        working-directory: mobile
+        run: |
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          for name in ['quran-360.png', 'quran-page-585.png', 'quran-page-601.png', 'quran-page-604.png']:
+              image = Path('build/review') / name
+              if image.exists():
+                  print('QARI_PREVIEW ' + name + ' ' + base64.b64encode(image.read_bytes()).decode())
+          PY
       - name: Quran UI previews
         if: always()
         uses: actions/upload-artifact@v4

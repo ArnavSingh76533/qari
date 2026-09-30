@@ -951,12 +951,15 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// A surah's opening, drawn inline where its ayah 1 begins: the title plate,
   /// then the Bismillah. Al-Fatiha's Bismillah IS ayah 1 (drawing it again
   /// would duplicate it) and At-Tawbah (9) has none.
-  static const _surahBannerHeight = 56.0;
-  static const _bismillahFontSize = 20.0;
+  static const _surahBannerHeight = 40.0;
+  static const _bismillahFontSize = 18.0;
+  static const _bismillahLineHeight = 1.5;
 
   double _surahOpeningHeight(int surah) =>
       10 + _surahBannerHeight +
-      (surah == 1 || surah == 9 ? 8 : 6 + _bismillahFontSize * 1.9);
+      (surah == 1 || surah == 9
+          ? 8
+          : 6 + _bismillahFontSize * _bismillahLineHeight);
 
   Widget _surahOpening(MushafTheme mushaf, int surah) {
     return Padding(
@@ -969,10 +972,15 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             name: surahNameEnglish(surah) ?? 'Surah $surah',
             nameArabic: surahNameArabic(surah),
             height: _surahBannerHeight,
+            showEnglishName: false,
           ),
           if (surah != 1 && surah != 9) ...[
             const SizedBox(height: 6),
-            MushafBismillah(theme: mushaf, fontSize: _bismillahFontSize),
+            MushafBismillah(
+              theme: mushaf,
+              fontSize: _bismillahFontSize,
+              lineHeight: _bismillahLineHeight,
+            ),
           ] else
             const SizedBox(height: 8),
         ],
@@ -982,8 +990,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// The Mushaf page: framed paper with inline surah openings and the word
   /// flow, all inside ONE bounded scroll view. The frame grows with its
-  /// text and scrolls as a whole, so text can never overflow past the border,
-  /// and [_floatingBarClearance] keeps the last line clear of the mic bar.
+  /// text and scrolls as a whole at large accessibility text sizes. The mic
+  /// bar has its own space below the page and cannot cover the last line.
   ///
   /// The SAME page is used before, during and after recitation — only the word
   /// states change — so tapping the mic never swaps or re-floods the text.

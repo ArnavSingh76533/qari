@@ -99,6 +99,7 @@ class MushafSurahBanner extends StatelessWidget {
     this.nameArabic,
     this.meta,
     this.height = 74,
+    this.showEnglishName = true,
   });
 
   final MushafTheme theme;
@@ -110,6 +111,7 @@ class MushafSurahBanner extends StatelessWidget {
   /// Optional caption under the plate (e.g. "Meccan · 7 ayahs").
   final String? meta;
   final double height;
+  final bool showEnglishName;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +146,7 @@ class MushafSurahBanner extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (nameArabic != null)
+                    if (nameArabic != null && showEnglishName)
                       Text(
                         name,
                         style: TextStyle(
@@ -293,10 +295,12 @@ class MushafBismillah extends StatelessWidget {
     super.key,
     required this.theme,
     this.fontSize = 24,
+    this.lineHeight = 1.9,
   });
 
   final MushafTheme theme;
   final double fontSize;
+  final double lineHeight;
 
   static const String bismillah = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ';
 
@@ -311,7 +315,7 @@ class MushafBismillah extends StatelessWidget {
           fontFamily: AppConstants.arabicFontFamily,
           color: theme.text,
           fontSize: fontSize,
-          height: 1.9,
+          height: lineHeight,
         ),
       ),
     );

@@ -12,6 +12,22 @@ import 'package:qari/features/recitation/presentation/pages/live_recitation_page
 import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+void reportPageGeometry(WidgetTester tester) {
+  if (!const bool.fromEnvironment('CAPTURE_QURAN_UI')) return;
+  final finder = find.byType(MushafRevealView);
+  final view = tester.widget<MushafRevealView>(finder);
+  final wordFinder = find.descendant(of: finder, matching: find.text(view.words.first)).first;
+  final word = tester.widget<Text>(wordFinder);
+  final context = tester.element(wordFinder);
+  final painter = TextPainter(
+    text: TextSpan(text: view.words.first, style: word.style),
+    textDirection: TextDirection.rtl,
+    textScaler: MediaQuery.textScalerOf(context),
+  )..layout();
+  debugPrint('Quran geometry: paper=${view.minimumHeight}, flow=${tester.getSize(finder)}, font=${word.style?.fontSize}, word=${tester.getSize(wordFinder)}, measured=${painter.size}, blocks=${view.blocksBefore.entries.map((e) => '${e.key}:${tester.getSize(find.byWidget(e.value)).height}').join(',')}');
+  painter.dispose();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -89,6 +105,7 @@ void main() {
             home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
           )));
       await tester.pumpAndSettle();
+      reportPageGeometry(tester);
       if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
         final boundary =
             preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
@@ -134,7 +151,11 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final target in [(48, 2, 282, '٢٨٢'), (501, 45, 23, '٣٢'), (604, 112, 1, '٦')]) {
+  for (final target in [(48, 2, 282, '٢٨٢'), (501, 45, 23, '٣٢'), (576, 74, 19, '٤٧'),
+    (585, 80, 1, '٤٠'),
+    (591, 86, 1, '١٠'),
+    (601, 103, 1, '٥'),
+    (604, 112, 1, '٦')]) {
     testWidgets('complete page ${target.$1} fits with all verse markers', (tester) async {
       tester.view.physicalSize = const Size(360, 740);
       tester.view.devicePixelRatio = 1;
@@ -146,6 +167,7 @@ void main() {
           initialMode: RecitationMode.tilawat),
       )));
       await tester.pumpAndSettle();
+      reportPageGeometry(tester);
       if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
         final boundary = preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
         await tester.runAsync(() async {
