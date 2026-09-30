@@ -8,6 +8,10 @@ on:
     paths:
       - "mobile/**"
       - ".github/workflows/flutter-ci.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/flutter-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -37,4 +41,5 @@ jobs:
             test/ayah_widget_visibility_test.dart \
             test/recitation_screen_test.dart \
             test/recitation_word_mapping_test.dart \
-            test/live_recitation_test.dart
+            test/live_recitation_test.dart \
+            test/full_page_recitation_test.dart
