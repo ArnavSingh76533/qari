@@ -107,6 +107,37 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('printed lines fit narrow paper with enlarged text', (tester) async {
+    final words = List.generate(9, (i) => 'ءَأَنذَرْتَهُمْ');
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: SizedBox(
+          width: 200,
+          child: MushafRevealView(
+            words: words,
+            statuses: const [],
+            mushaf: MushafTheme.classic,
+            minimumHeight: 800,
+            lineEnds: const [8],
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final rects = find.text(words.first).evaluate().map((e) => tester.getRect(find.byWidget(e.widget))).toList();
+    for (final rect in rects) {
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(200));
+    }
+    expect(rects.map((r) => r.center.dy.round()).toSet().length, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final size in [const Size(360, 740), const Size(430, 932)]) {
     testWidgets('Al-Baqarah page 3 keeps fifteen natural lines at $size',
         (tester) async {
