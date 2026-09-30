@@ -75,7 +75,8 @@ void main() {
       final painter = TextPainter(
         text: TextSpan(
           text: word,
-          style: AppTheme.arabicTextStyle(fontSize: 20).copyWith(fontSize: 20, height: 1.65),
+          style: AppTheme.arabicTextStyle(fontSize: 20)
+              .copyWith(fontSize: 20, height: 1.65),
         ),
         textDirection: TextDirection.rtl,
       )..layout();
@@ -107,11 +108,13 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('printed lines fit narrow paper with enlarged text', (tester) async {
+  testWidgets('printed lines fit narrow paper with enlarged text',
+      (tester) async {
     final words = List.generate(9, (i) => 'ءَأَنذَرْتَهُمْ');
     await tester.pumpWidget(MaterialApp(
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(2)),
         child: child!,
       ),
       home: Scaffold(
@@ -129,7 +132,11 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    final rects = find.text(words.first).evaluate().map((e) => tester.getRect(find.byWidget(e.widget))).toList();
+    final rects = find
+        .text(words.first)
+        .evaluate()
+        .map((e) => tester.getRect(find.byWidget(e.widget)))
+        .toList();
     for (final rect in rects) {
       expect(rect.left, greaterThanOrEqualTo(0));
       expect(rect.right, lessThanOrEqualTo(200));
@@ -161,10 +168,12 @@ void main() {
       final view = find.byType(MushafRevealView);
       final frame = tester.getRect(find.byType(MushafPageFrame));
       final rows = <int>{};
-      for (final element in find.descendant(
-        of: view,
-        matching: find.byType(Text),
-      ).evaluate()) {
+      for (final element in find
+          .descendant(
+            of: view,
+            matching: find.byType(Text),
+          )
+          .evaluate()) {
         final text = element.widget as Text;
         final value = text.data ?? text.textSpan?.toPlainText() ?? '';
         if (!RegExp(r'[\u0621-\u064a]').hasMatch(value)) continue;
@@ -184,7 +193,8 @@ void main() {
         await tester.runAsync(() async {
           final image = await boundary.toImage(pixelRatio: 2);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          final file = File('build/review/quran-page3-${size.width.toInt()}.png');
+          final file =
+              File('build/review/quran-page3-${size.width.toInt()}.png');
           await file.parent.create(recursive: true);
           await file.writeAsBytes(bytes!.buffer.asUint8List());
           image.dispose();

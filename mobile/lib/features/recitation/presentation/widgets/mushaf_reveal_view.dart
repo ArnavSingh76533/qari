@@ -149,8 +149,12 @@ class MushafRevealView extends StatelessWidget {
   double _pageFontSize(BuildContext context, double width) {
     final scaler = MediaQuery.textScalerOf(context);
     final cacheKey = (
-      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(','), lineEnds.join(',')]
-          .join('\u0001'),
+      [
+        words.join('\u0000'),
+        ayahBoundaries.join(','),
+        ayahLabels.join(','),
+        lineEnds.join(',')
+      ].join('\u0001'),
       '${blocksBefore.keys.join(',')}|${blockHeights.entries.map((e) => '${e.key}:${e.value}').join(',')}',
       width,
       minimumHeight,
@@ -194,7 +198,8 @@ class MushafRevealView extends StatelessWidget {
           groupWidth += measure(toArabicIndicDigits(label)).width;
         }
         if (lineEnds.isEmpty &&
-            usedWidth > 0 && usedWidth + 2 + groupWidth > width) {
+            usedWidth > 0 &&
+            usedWidth + 2 + groupWidth > width) {
           finishRow();
         }
         usedWidth += (usedWidth > 0 ? 2 : 0) + groupWidth;
@@ -207,9 +212,11 @@ class MushafRevealView extends StatelessWidget {
       return totalHeight - 6;
     }
 
-    var low = 13.0;
+    // Fixed printed lines must fit horizontally even on narrow paper or with
+    // enlarged system text. The old 13dp floor could overflow a whole row.
+    var low = lineEnds.isEmpty ? 13.0 : 1.0;
     var high = 40.0;
-    for (var i = 0; i < 7; i++) {
+    for (var i = 0; i < 9; i++) {
       final mid = (low + high) / 2;
       if (heightAt(mid) <= minimumHeight) {
         low = mid;
@@ -259,6 +266,7 @@ class MushafRevealView extends StatelessWidget {
       ));
       lineWords.clear();
     }
+
     for (var i = 0; i < words.length; i++) {
       final block = blocksBefore[i];
       if (block != null) {

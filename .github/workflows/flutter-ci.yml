@@ -33,9 +33,9 @@ jobs:
       - name: Format changed typography sources
         working-directory: mobile
         run: |
-          dart format lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart
+          dart format lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart test/full_page_recitation_test.dart
           mkdir -p build/review/formatted
-          cp --parents lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart build/review/formatted/
+          cp --parents lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart test/full_page_recitation_test.dart build/review/formatted/
       - name: Check Dart formatting
         working-directory: mobile
         run: dart format --output=none --set-exit-if-changed lib/data/models/recitation_model.dart lib/data/services/recitation_auth.dart lib/data/services/audio_service.dart lib/data/services/streaming_recitation_service.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/widgets/recitation_results.dart lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart lib/features/home/presentation/pages/home_page.dart test/full_page_recitation_test.dart test/live_recitation_test.dart test/mushaf_modes_test.dart test/recitation_evidence_test.dart lib/features/recitation/presentation/mushaf/mushaf_theme.dart

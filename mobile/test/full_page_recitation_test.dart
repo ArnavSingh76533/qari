@@ -323,6 +323,17 @@ void main() {
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
       }
+      final frame = tester.getRect(find.byType(MushafPageFrame));
+      for (final element in find.descendant(
+        of: find.byType(MushafRevealView),
+        matching: find.byType(Text),
+      ).evaluate()) {
+        final rect = tester.getRect(find.byWidget(element.widget));
+        expect(rect.left, greaterThanOrEqualTo(frame.left),
+            reason: 'page $page');
+        expect(rect.right, lessThanOrEqualTo(frame.right),
+            reason: 'page $page');
+      }
       expect(tester.takeException(), isNull, reason: 'page $page');
     }
     expect(failures, isEmpty, reason: failures.join('\n'));
