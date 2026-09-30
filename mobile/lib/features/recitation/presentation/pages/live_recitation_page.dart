@@ -161,7 +161,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// viewport as words wrap.
   final ScrollController _scrollController = ScrollController();
 
-
   /// The post-recitation review (reach-limited statuses + score). Rendered on
   /// the same Mushaf page, never as a separate tile screen.
   RecitationReview? _review;
@@ -171,23 +170,28 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// diagnostic Text rebuilds, not the whole reveal view).
   final ValueNotifier<int> _micChunksNotifier = ValueNotifier(0);
   final ValueNotifier<int> _sentBytesNotifier = ValueNotifier(0);
+
   /// Native recorder error captured from the recorder's state channel (e.g.
   /// "PCM reader failed to initialize"). Surfaced live so a swallowed setup
   /// failure is visible immediately, not just on the error screen.
   final ValueNotifier<String?> _micErrorNotifier = ValueNotifier(null);
+
   /// Android audio-focus grant result (from `audio_session`). `false` ⇒ the OS
   /// denied focus ⇒ the recorder is silently dead ⇒ "mic chunks: 0".
   final ValueNotifier<bool?> _focusNotifier = ValueNotifier(null);
+
   /// How many native audio frames actually reached the Dart `onData` callback.
   /// Surfaced live so we can tell "native posted frames but Dart never got them"
   /// (EventChannel delivery break) from "Dart got them but processing failed".
   final ValueNotifier<int> _audioOnDataNotifier = ValueNotifier(0);
+
   /// True once we've been "listening" for a couple seconds but the recorder has
   /// produced zero chunks — i.e. the OS is blocking mic capture. Surfaces a
   /// live warning so the user doesn't have to wait until "Stop" to find out.
   final ValueNotifier<bool> _noAudioNotifier = ValueNotifier(false);
   DateTime? _listenStartedAt;
   Timer? _diagTimer;
+
   /// Guards `_stop()` so repeated taps on "Stop & Review" (the old 10-click
   /// workaround) only trigger one finalize.
   bool _stopping = false;
@@ -306,7 +310,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   Future<void> _loadInitialPage() async {
     if (widget.surahNumber != null) {
       final ayahs = await _corpus.getAyahs(widget.surahNumber!);
-      final chosen = ayahs.where((a) => a.ayahNumber == (widget.ayahNumber ?? 1));
+      final chosen =
+          ayahs.where((a) => a.ayahNumber == (widget.ayahNumber ?? 1));
       if (chosen.isNotEmpty) _page = chosen.first.pageNumber ?? 1;
     }
     if (mounted) await _loadScope();
@@ -329,8 +334,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       // For the surah scope, restrict to the chosen ayah range.
       final ayahs = _scope == RecitationScope.surah
           ? allAyahs
-              .where((a) =>
-                  a.ayahNumber >= _ayahFrom && a.ayahNumber <= _ayahTo)
+              .where(
+                  (a) => a.ayahNumber >= _ayahFrom && a.ayahNumber <= _ayahTo)
               .toList()
           : allAyahs;
 
@@ -420,10 +425,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         //
         // NEVER render `event.expected` for display: that field is the ASR-facing
         // key, and using it would strip the diacritics off the page.
-        final serverWords =
-            event.words.isNotEmpty && event.words.length == _revealedWords.length
-                ? event.words.map((w) => w.text).toList()
-                : null;
+        final serverWords = event.words.isNotEmpty &&
+                event.words.length == _revealedWords.length
+            ? event.words.map((w) => w.text).toList()
+            : null;
         // Re-prime (rather than only resetting verdicts) so a reconnect starts
         // from a clean, fully neutral page instead of inheriting the previous
         // session's colours. Prime FIRST, then adopt the server text, so the
@@ -446,9 +451,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         final text = (event.expected ?? event.spoken ?? '').trim();
         // Capture the word's tajweed spans (aligned by reference index) so the
         // live canvas can colour each letter by its rule.
-        final spans = (idx != null && idx >= 0 && idx < _wordTajweedSpans.length)
-            ? _wordTajweedSpans[idx]
-            : null;
+        final spans =
+            (idx != null && idx >= 0 && idx < _wordTajweedSpans.length)
+                ? _wordTajweedSpans[idx]
+                : null;
         _applyVerdict(text, idx, event.status, spans);
         break;
       case RecitationStreamEventType.finalResult:
@@ -633,9 +639,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       // app holding the mic). Surface it verbatim so the user isn't left
       // guessing between "permission" and "network".
       final nativeErr = _service.micError;
-      final nativeDetail = nativeErr != null
-          ? ' Recorder error: $nativeErr'
-          : '';
+      final nativeDetail =
+          nativeErr != null ? ' Recorder error: $nativeErr' : '';
       // Distinguish "the recorder produced no audio" (capture blocked by the
       // OS despite the app permission being granted) from "audio was captured
       // but never reached the server" (a transport / dropped-connection issue)
@@ -886,9 +891,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                           color: mushaf.text.withValues(alpha: 0.6),
                         ),
                       ),
-                      Text(_mode.label, style: theme.textTheme.labelSmall?.copyWith(
-                        color: mushaf.accent, fontWeight: FontWeight.w600,
-                      )),
+                      Text(_mode.label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: mushaf.accent,
+                            fontWeight: FontWeight.w600,
+                          )),
                     ],
                   ),
                 ),
@@ -923,7 +930,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       ),
     );
   }
-
 
   Widget _buildBody(ThemeData theme, MushafTheme mushaf) {
     switch (_ui) {
@@ -999,43 +1005,45 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                   maxWidth: 620,
                 ),
                 child: MushafPageFrame(
-              theme: mushaf,
-              padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
-              child: _loadingPage || _words.isEmpty || _revealedWords.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Text(
-                        'Loading…',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: mushaf.text.withValues(alpha: 0.5),
+                  theme: mushaf,
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+                  child: _loadingPage ||
+                          _words.isEmpty ||
+                          _revealedWords.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Text(
+                            'Loading…',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: mushaf.text.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        )
+                      : MushafRevealView(
+                          words: _revealedWords,
+                          statuses: statuses,
+                          mushaf: mushaf,
+                          cursor: cursor,
+                          tajweedSpans: _revealedTajweedSpans,
+                          tajweedEnabled: _tajweedOn,
+                          ayahBoundaries: _ayahBoundaries,
+                          ayahLabels: _ayahLabels,
+                          minimumHeight: textHeight,
+                          blockHeights: {
+                            for (final e in _surahStarts.entries)
+                              e.key: e.value == 1 || e.value == 9 ? 92 : 135.6,
+                          },
+                          caretKey: _caretKeyFallback,
+                          cursorKey: reviewMode ? null : _cursorKey,
+                          reviewMode: reviewMode,
+                          onMistakeTap: onMistakeTap,
+                          hideUnspoken: _mode == RecitationMode.hifz,
+                          blocksBefore: {
+                            for (final e in _surahStarts.entries)
+                              e.key: _surahOpening(mushaf, e.value),
+                          },
                         ),
-                      ),
-                    )
-                  : MushafRevealView(
-                      words: _revealedWords,
-                      statuses: statuses,
-                      mushaf: mushaf,
-                      cursor: cursor,
-                      tajweedSpans: _revealedTajweedSpans,
-                      tajweedEnabled: _tajweedOn,
-                      ayahBoundaries: _ayahBoundaries,
-                      ayahLabels: _ayahLabels,
-                      minimumHeight: textHeight,
-                      blockHeights: {
-                        for (final e in _surahStarts.entries)
-                          e.key: e.value == 1 || e.value == 9 ? 92 : 135.6,
-                      },
-                      caretKey: _caretKeyFallback,
-                      cursorKey: reviewMode ? null : _cursorKey,
-                      reviewMode: reviewMode,
-                      onMistakeTap: onMistakeTap,
-                      hideUnspoken: _mode == RecitationMode.hifz,
-                      blocksBefore: {
-                        for (final e in _surahStarts.entries)
-                          e.key: _surahOpening(mushaf, e.value),
-                      },
-                    ),
                 ),
               ),
             ),
@@ -1051,7 +1059,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       children: [
         Expanded(
           child: _buildMushafPage(
-            theme, mushaf, statuses: _revealedStatuses, cursor: -1,
+            theme,
+            mushaf,
+            statuses: _revealedStatuses,
+            cursor: -1,
           ),
         ),
         _floating(FloatingRecitationBar(
@@ -1060,15 +1071,19 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           micLabel: 'Start reciting',
           onMicTap: _loadingPage ? () {} : _start,
           onJumpTap: () => _openQuickJump(mushaf),
-          onPreviousPage: _canChangePage && _page > 1 ? () => _changePage(_page - 1) : null,
-          onNextPage: _canChangePage && _page < 604 ? () => _changePage(_page + 1) : null,
+          onPreviousPage:
+              _canChangePage && _page > 1 ? () => _changePage(_page - 1) : null,
+          onNextPage: _canChangePage && _page < 604
+              ? () => _changePage(_page + 1)
+              : null,
           pageLabel: '$_page / 604',
         )),
       ],
     );
   }
 
-  bool get _canChangePage => !_loadingPage && _ui == LiveRecitationUiState.setup;
+  bool get _canChangePage =>
+      !_loadingPage && _ui == LiveRecitationUiState.setup;
 
   Future<void> _changePage(int page) async {
     if (!_canChangePage || page < 1 || page > 604) return;
@@ -1169,7 +1184,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   Widget _buildLive(ThemeData theme, MushafTheme mushaf) {
     return Column(
       children: [
-        Expanded(child: Column(
+        Expanded(
+            child: Column(
           children: [
             // Status bar (self-managed LIVE timer) so the page never setStates
             // on a 1s tick (which would rebuild the reveal view).
@@ -1189,8 +1205,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                         color: theme.colorScheme.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color:
-                              theme.colorScheme.error.withValues(alpha: 0.4),
+                          color: theme.colorScheme.error.withValues(alpha: 0.4),
                         ),
                       ),
                       child: Row(
@@ -1313,7 +1328,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     final review = _review!;
     return Column(
       children: [
-        Expanded(child: Column(
+        Expanded(
+            child: Column(
           children: [
             _ReviewSummary(review: review, mushaf: mushaf, theme: theme),
             Expanded(
@@ -1343,10 +1359,12 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       const LinearProgressIndicator(),
       Padding(
         padding: const EdgeInsets.all(10),
-        child: Text('Reviewing your recitation…', style: theme.textTheme.bodySmall),
+        child: Text('Reviewing your recitation…',
+            style: theme.textTheme.bodySmall),
       ),
-      Expanded(child: _buildMushafPage(theme, mushaf,
-        statuses: _revealedStatuses, cursor: _liveCursor)),
+      Expanded(
+          child: _buildMushafPage(theme, mushaf,
+              statuses: _revealedStatuses, cursor: _liveCursor)),
     ]);
   }
 
@@ -1358,11 +1376,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline_rounded,
-                size: 64, color: theme.colorScheme.error.withValues(alpha: 0.6)),
+                size: 64,
+                color: theme.colorScheme.error.withValues(alpha: 0.6)),
             const SizedBox(height: 20),
             Text(
               'Something went wrong',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -1377,7 +1397,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             const SizedBox(height: 28),
             FilledButton(
               onPressed: _reset,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52)),
               child: const Text('Try Again'),
             ),
           ],
@@ -1422,7 +1443,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text('Choose a surah',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
                   _NumberDropdown(
                     label: 'Surah',
@@ -1445,7 +1467,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                       });
                       _loadScope();
                     },
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52)),
                     child: const Text('Set'),
                   ),
                 ],
@@ -1500,7 +1523,8 @@ class _ReviewSummary extends StatelessWidget {
     final muted = mushaf.text.withValues(alpha: 0.6);
     final String detail;
     if (evaluated == 0) {
-      detail = 'No words were recognised. Move closer to the mic and try again.';
+      detail =
+          'No words were recognised. Move closer to the mic and try again.';
     } else {
       final parts = <String>[
         '${review.correctCount} correct',
@@ -1684,6 +1708,7 @@ class _LiveStatusBadgeState extends State<_LiveStatusBadge> {
     );
   }
 }
+
 class _NumberDropdown extends StatelessWidget {
   final String label;
   final int value;
@@ -1744,10 +1769,13 @@ class _TajweedToggle extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: value ? color.withValues(alpha: 0.08) : theme.colorScheme.surface,
+          color:
+              value ? color.withValues(alpha: 0.08) : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: value ? color.withValues(alpha: 0.4) : theme.colorScheme.outline.withValues(alpha: 0.2),
+            color: value
+                ? color.withValues(alpha: 0.4)
+                : theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -1759,7 +1787,8 @@ class _TajweedToggle extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Tajweed colours',
-                      style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
                   Text(
                     'Colour each letter by its tajweed rule as it appears',
                     style: theme.textTheme.labelSmall?.copyWith(

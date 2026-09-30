@@ -29,10 +29,15 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: LiveRecitationPage()));
     await tester.pumpAndSettle();
-    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
-        .hideUnspoken, isTrue);
-    expect(find.byTooltip('Tilawat: full page visible. Tap for Hifz'), findsNothing);
-    expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'), findsNothing);
+    expect(
+        tester
+            .widget<MushafRevealView>(find.byType(MushafRevealView))
+            .hideUnspoken,
+        isTrue);
+    expect(find.byTooltip('Tilawat: full page visible. Tap for Hifz'),
+        findsNothing);
+    expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
+        findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -43,26 +48,37 @@ void main() {
       home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
     ));
     await tester.pumpAndSettle();
-    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
-        .hideUnspoken, isFalse);
-    expect(find.byTooltip('Tilawat: full page visible. Tap for Hifz'), findsNothing);
+    expect(
+        tester
+            .widget<MushafRevealView>(find.byType(MushafRevealView))
+            .hideUnspoken,
+        isFalse);
+    expect(find.byTooltip('Tilawat: full page visible. Tap for Hifz'),
+        findsNothing);
     expect(find.text('Tajweed colours'), findsNothing,
         reason: 'appearance settings must not consume page height');
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final size in [const Size(360, 740), const Size(430, 932), const Size(800, 1100)]) {
+  for (final size in [
+    const Size(360, 740),
+    const Size(430, 932),
+    const Size(800, 1100)
+  ]) {
     testWidgets('Quran sheet fills available height at $size', (tester) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final preview = GlobalKey();
-      await tester.pumpWidget(RepaintBoundary(key: preview, child: const MaterialApp(
-        home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
-      )));
+      await tester.pumpWidget(RepaintBoundary(
+          key: preview,
+          child: const MaterialApp(
+            home: LiveRecitationPage(initialMode: RecitationMode.tilawat),
+          )));
       await tester.pumpAndSettle();
       if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
-        final boundary = preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
+        final boundary =
+            preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
         await tester.runAsync(() async {
           final image = await boundary.toImage(pixelRatio: 2);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -77,8 +93,8 @@ void main() {
       expect(page.height, greaterThan(size.height * .70),
           reason: 'Quran must fill the viewport instead of a short card');
       expect(page.bottom, closeTo(bar.top, 18));
-      expect(tester.getRect(find.text('٧')).bottom,
-          greaterThan(page.bottom - 80),
+      expect(
+          tester.getRect(find.text('٧')).bottom, greaterThan(page.bottom - 80),
           reason: 'Quran lines should use the whole sheet');
       expect(tester.getRect(find.text('٧')).bottom, lessThanOrEqualTo(bar.top));
       expect(tester.takeException(), isNull);
@@ -96,9 +112,48 @@ void main() {
     await tester.tap(find.byTooltip('Next Quran page'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Page 2 |'), findsOneWidget);
-    expect(tester.widget<MushafRevealView>(find.byType(MushafRevealView))
-        .hideUnspoken, isFalse);
+    expect(
+        tester
+            .widget<MushafRevealView>(find.byType(MushafRevealView))
+            .hideUnspoken,
+        isFalse);
     expect(find.text('سُورَةُ البقرة'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+
+  for (final target in [(48, 2, 282, '٢٨٢'), (501, 45, 23, '٣٢'), (604, 112, 1, '٦')]) {
+    testWidgets('complete page ${target.$1} fits with all verse markers', (tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final preview = GlobalKey();
+      await tester.pumpWidget(RepaintBoundary(key: preview, child: MaterialApp(
+        home: LiveRecitationPage(surahNumber: target.$2, ayahNumber: target.$3,
+          initialMode: RecitationMode.tilawat),
+      )));
+      await tester.pumpAndSettle();
+      if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
+        final boundary = preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          final file = File('build/review/quran-page-${target.$1}.png');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      expect(find.textContaining('Page ${target.$1} |'), findsOneWidget);
+      final page = tester.getRect(find.byType(MushafPageFrame));
+      final bar = tester.getRect(find.byType(FloatingRecitationBar));
+      final marker = tester.getRect(find.text(target.$4).last);
+      expect(marker.bottom, lessThanOrEqualTo(bar.top));
+      expect(page.bottom, lessThanOrEqualTo(bar.top));
+      final position = tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+      expect(position.maxScrollExtent, lessThanOrEqualTo(2),
+        reason: 'the complete Quran page must fit above its controls at standard text size');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 }

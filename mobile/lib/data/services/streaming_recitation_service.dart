@@ -30,7 +30,14 @@ const EventChannel _micStreamChannel = EventChannel('com.qari.app/mic_stream');
 const EventChannel _micStatusChannel = EventChannel('com.qari.app/mic_status');
 
 /// Connection state of a live recitation streaming session.
-enum LiveConnectionState { idle, connecting, listening, finishing, closed, error }
+enum LiveConnectionState {
+  idle,
+  connecting,
+  listening,
+  finishing,
+  closed,
+  error
+}
 
 /// Streams microphone audio continuously to the backend `/ws/recitation/stream`
 /// WebSocket and surfaces real-time word-by-word match events.
@@ -43,6 +50,7 @@ class StreamingRecitationService {
   WebSocket? _socket;
   StreamSubscription<dynamic>? _audioSub;
   StreamSubscription? _socketSub;
+
   /// Subscription to the native mic *status* channel (capture started / errors),
   /// surfaced live in the diag line so a swallowed native failure is visible.
   StreamSubscription? _statusSub;
@@ -153,7 +161,6 @@ class StreamingRecitationService {
   String? get lastFrameType => _lastFrameType;
   String? _audioOnDataError;
   String? get audioOnDataError => _audioOnDataError;
-
 
   /// Result of the Android audio-focus request (via `audio_session`). `null`
   /// until the session is activated; `false` means the OS denied focus, which
@@ -266,9 +273,8 @@ class StreamingRecitationService {
     // boundaries (full-page / full-surah continuous recitation). Also send the
     // client's resolved word list as a fallback reference so the backend can
     // still score when its own reference store is empty (prevents "0 of 0").
-    final List<List<int>> refs = ayahRefs == null
-        ? []
-        : ayahRefs.map((r) => [r.$1, r.$2]).toList();
+    final List<List<int>> refs =
+        ayahRefs == null ? [] : ayahRefs.map((r) => [r.$1, r.$2]).toList();
     _socket!.add(jsonEncode({
       'type': 'start',
       'surah_number': surahNumber,
@@ -340,7 +346,8 @@ class StreamingRecitationService {
       await _micForegroundChannel.invokeMethod<void>('start');
       debugPrint('[Streaming] mic foreground service started.');
     } catch (e) {
-      debugPrint('[Streaming] mic foreground service start failed (non-fatal): $e');
+      debugPrint(
+          '[Streaming] mic foreground service start failed (non-fatal): $e');
     }
   }
 
@@ -350,7 +357,8 @@ class StreamingRecitationService {
       await _micForegroundChannel.invokeMethod<void>('stop');
       debugPrint('[Streaming] mic foreground service stopped.');
     } catch (e) {
-      debugPrint('[Streaming] mic foreground service stop failed (non-fatal): $e');
+      debugPrint(
+          '[Streaming] mic foreground service stop failed (non-fatal): $e');
     }
   }
 
@@ -409,7 +417,8 @@ class StreamingRecitationService {
         _audioOnDataCount++;
         _lastFrameType = chunk.runtimeType.toString();
         try {
-          debugPrint('[Streaming] native audio onData type=${chunk.runtimeType} '
+          debugPrint(
+              '[Streaming] native audio onData type=${chunk.runtimeType} '
               'len=${chunk is List ? chunk.length : 'n/a'}');
           Uint8List bytes;
           if (chunk is Uint8List) {
@@ -457,7 +466,8 @@ class StreamingRecitationService {
       _emitAmplitude(chunk);
     } catch (e, st) {
       _audioOnDataError = e.toString();
-      debugPrint('[Streaming] _emitAmplitude ERROR (chunk len=${chunk.length}): '
+      debugPrint(
+          '[Streaming] _emitAmplitude ERROR (chunk len=${chunk.length}): '
           '$e\n$st');
     }
   }
@@ -469,7 +479,8 @@ class StreamingRecitationService {
     final sock = _socket;
     if (sock == null || sock.readyState != WebSocket.open) return;
     while (_pendingAudio.length >= _pcmFrameBytes) {
-      final frame = Uint8List.fromList(_pendingAudio.sublist(0, _pcmFrameBytes));
+      final frame =
+          Uint8List.fromList(_pendingAudio.sublist(0, _pcmFrameBytes));
       _pendingAudio.removeRange(0, _pcmFrameBytes);
       _totalSentBytes += frame.length;
       sock.add(frame);
@@ -511,7 +522,8 @@ class StreamingRecitationService {
       } else if (event.type == RecitationStreamEventType.ready) {
         debugPrint('[Streaming] RX ready (${event.words.length} words)');
       } else if (event.type == RecitationStreamEventType.finalResult) {
-        debugPrint('[Streaming] RX final (duration=${event.result?.durationSeconds}s, '
+        debugPrint(
+            '[Streaming] RX final (duration=${event.result?.durationSeconds}s, '
             'verdicts=${event.result?.wordVerdicts.length})');
       } else if (event.type == RecitationStreamEventType.error) {
         debugPrint('[Streaming] RX ERROR: ${event.detail}');

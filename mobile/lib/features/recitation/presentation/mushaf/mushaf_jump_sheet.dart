@@ -202,21 +202,24 @@ class _MushafJumpSheetState extends State<MushafJumpSheet> {
                   }),
                 ),
               ),
-              if (!widget.pageMode) Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('→', style: TextStyle(color: t.text, fontSize: 18)),
-              ),
-              if (!widget.pageMode) Expanded(
-                child: _MushafNumberField(
-                  label: 'To ayah',
-                  value: _to,
-                  count: _count,
-                  theme: t,
-                  onChanged: (v) => setState(() {
-                    _to = v < _from ? _from : v;
-                  }),
+              if (!widget.pageMode)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child:
+                      Text('→', style: TextStyle(color: t.text, fontSize: 18)),
                 ),
-              ),
+              if (!widget.pageMode)
+                Expanded(
+                  child: _MushafNumberField(
+                    label: 'To ayah',
+                    value: _to,
+                    count: _count,
+                    theme: t,
+                    onChanged: (v) => setState(() {
+                      _to = v < _from ? _from : v;
+                    }),
+                  ),
+                ),
             ],
           ),
           if (_loadingCount) ...[
@@ -241,8 +244,10 @@ class _MushafJumpSheetState extends State<MushafJumpSheet> {
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () => widget.onPick?.call(
-              MushafJumpTarget(surah: _surah, ayahFrom: _from,
-                ayahTo: widget.pageMode ? _from : _to),
+              MushafJumpTarget(
+                  surah: _surah,
+                  ayahFrom: _from,
+                  ayahTo: widget.pageMode ? _from : _to),
             ),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),

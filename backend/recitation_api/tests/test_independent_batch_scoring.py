@@ -19,14 +19,17 @@ HEARD = ["بسم", "الله", "الرحمن", "الرحيم"]
 
 
 class _AudioModel:
-    def __init__(self, *, oracle=False):
+    def __init__(self, *, oracle=False, heard=None):
         self.oracle = oracle
+        self.heard = HEARD if heard is None else heard
+        self.decode_calls = 0
 
     def transcribe(self, _samples, **options):
+        self.decode_calls += 1
         # Mirrors the reported failure: an oracle echoes a provided reference
         # regardless of the audio. The independent model only reports HEARD.
         prompt = options.get("initial_prompt")
-        words = prompt.split() if self.oracle and prompt else HEARD
+        words = prompt.split() if self.oracle and prompt else self.heard
         return [SimpleNamespace(words=[
             SimpleNamespace(word=word, probability=0.9, start=i * 0.2, end=(i + 1) * 0.2)
             for i, word in enumerate(words)
@@ -115,3 +118,78 @@ def test_missing_verification_model_fails_without_oracle_fallback(batch_job, mon
     monkeypatch.setattr(transcriber, "_model_verify_for", unavailable)
     with pytest.raises(FileNotFoundError, match="verification model is missing"):
         asyncio.run(worker.run_fast_ml_inference(batch_job))
+
+
+def _set_range(batch_job, references, heard):
+    pipeline = worker._get_fast_pipeline()
+    for ayah, words in enumerate(references, start=2):
+        pipeline.reference_store.add(AyahReference(
+            surah=1, ayah=ayah, text=" ".join(words), normalized_text=" ".join(words),
+            words=[WordReference(word=word) for word in words],
+            reference_audio_url=f"https://example.test/{ayah}.mp3",
+        ))
+    pipeline.asr._transcriber._model_verify = _AudioModel(heard=heard)
+    return {**batch_job, "ayah_to": 1 + len(references)}
+
+
+def test_one_spoken_phrase_cannot_receive_credit_for_two_verses(batch_job):
+    job = _set_range(batch_job, [HEARD, HEARD], HEARD)
+    result = asyncio.run(worker.run_fast_ml_inference(job))
+
+    assert result["overall_score"] == 0.5
+    assert result["accuracy_score"] == 0.5
+    verdicts = result["word_verdicts"]
+    assert [word["word_index"] for word in verdicts] == list(range(8))
+    assert sum(word["is_correct"] for word in verdicts) == 4
+    assert sum(word["actual_text"] is None for word in verdicts) == 4
+    heard_rows = [word for word in verdicts if word["actual_text"] is not None]
+    assert [word["start_ms"] for word in heard_rows] == [0, 200, 400, 600]
+    assert [word["confidence"] for word in heard_rows] == [0.9] * 4
+    assert [word["reference_audio_url"] for word in verdicts] == (
+        ["https://example.test/2.mp3"] * 4 + ["https://example.test/3.mp3"] * 4
+    )
+
+
+def test_verse_range_decodes_the_recording_once(batch_job):
+    job = _set_range(batch_job, [HEARD, HEARD], HEARD)
+    result = asyncio.run(worker.run_fast_ml_inference(job))
+
+    assert worker._get_fast_pipeline().asr._transcriber._model_verify.decode_calls == 1
+    assert len(result["word_verdicts"]) == 8
+
+
+def test_reversed_verse_order_does_not_receive_full_credit(batch_job):
+    first = ["الحمد", "لله"]
+    second = ["رب", "العالمين"]
+    job = _set_range(batch_job, [first, second], second + first)
+    result = asyncio.run(worker.run_fast_ml_inference(job))
+
+    assert result["accuracy_score"] < 1.0
+    assert [word["word"] for word in result["word_verdicts"]] == first + second
+    actual_rows = [word for word in result["word_verdicts"] if word["actual_text"] is not None]
+    starts = [word["start_ms"] for word in actual_rows]
+    assert starts == sorted(starts)
+
+
+def test_missing_reference_keeps_known_verse_order_and_audio_urls(batch_job, monkeypatch):
+    job = _set_range(batch_job, [HEARD, EXPECTED, HEARD], HEARD)
+    monkeypatch.setattr(worker, "_ensure_reference", lambda _surah, ayah, _qari: ayah != 3)
+    result = asyncio.run(worker.run_fast_ml_inference(job))
+
+    assert result["accuracy_score"] == 0.5
+    assert [word["word_index"] for word in result["word_verdicts"]] == list(range(8))
+    assert [word["reference_audio_url"] for word in result["word_verdicts"]] == (
+        ["https://example.test/2.mp3"] * 4 + ["https://example.test/4.mp3"] * 4
+    )
+
+
+def test_no_references_returns_unavailable_feedback_without_decoding(batch_job, monkeypatch):
+    job = _set_range(batch_job, [HEARD, HEARD], HEARD)
+    monkeypatch.setattr(worker, "_ensure_reference", lambda *_args: False)
+    result = asyncio.run(worker.run_fast_ml_inference(job))
+
+    assert result["word_verdicts"] == []
+    assert result["confidence"] == 0.0
+    assert "couldn't analyse" in result["feedback"]
+    assert worker._get_fast_pipeline().asr._transcriber._model_verify.decode_calls == 0
+    assert result["tajweed_available"] is False

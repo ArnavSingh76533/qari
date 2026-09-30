@@ -135,8 +135,7 @@ class _NoSpeechResult extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            result.feedback ??
-                'Move closer to the microphone and try again.',
+            result.feedback ?? 'Move closer to the microphone and try again.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyLarge?.copyWith(
               height: 1.5,
@@ -218,7 +217,8 @@ class _ScoreHeader extends StatelessWidget {
                     Text(
                       '/ 100',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                   ],
@@ -279,14 +279,20 @@ class _SubScores extends StatelessWidget {
   Widget build(BuildContext context) {
     final scores = <Widget>[
       if (result.pronunciationAvailable)
-        _SubScoreCard(label: 'Pronunciation', score: result.pronunciationScore, theme: theme),
+        _SubScoreCard(
+            label: 'Pronunciation',
+            score: result.pronunciationScore,
+            theme: theme),
       if (result.tajweedAvailable)
-        _SubScoreCard(label: 'Tajweed', score: result.tajweedScore, theme: theme),
+        _SubScoreCard(
+            label: 'Tajweed', score: result.tajweedScore, theme: theme),
       if (result.fluencyAvailable)
-        _SubScoreCard(label: 'Fluency', score: result.fluencyScore, theme: theme),
+        _SubScoreCard(
+            label: 'Fluency', score: result.fluencyScore, theme: theme),
     ];
     if (scores.isEmpty) {
-      return Text('Pronunciation, Tajweed and fluency were not assessed.',
+      return Text(
+        'Pronunciation, Tajweed and fluency were not assessed.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurface.withValues(alpha: .6),
         ),
@@ -468,8 +474,8 @@ class _ResultWord extends StatelessWidget {
       ),
     );
 
-    final content =
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: word);
+    final content = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3), child: word);
     if (!isMistake) return content;
     return GestureDetector(
       onTap: onTap,
@@ -505,7 +511,8 @@ class _FeedbackCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.lightbulb_rounded, color: theme.colorScheme.primary, size: 24),
+          Icon(Icons.lightbulb_rounded,
+              color: theme.colorScheme.primary, size: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

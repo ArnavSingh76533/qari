@@ -62,7 +62,8 @@ Color? _inkOf(String word) {
 /// Background washes painted behind words.
 Set<Color> _washes() => {
       for (final e in find.byType(Container).evaluate())
-        if ((e.widget as Container).decoration case BoxDecoration(:final color?))
+        if ((e.widget as Container).decoration
+            case BoxDecoration(:final color?))
           color,
     };
 
@@ -177,8 +178,7 @@ void main() {
       expect(hifzSome, tilawat);
     });
 
-    testWidgets('the page opens in Hifz with the words hidden',
-        (tester) async {
+    testWidgets('the page opens in Hifz with the words hidden', (tester) async {
       await tester.pumpWidget(const MaterialApp(
         home: LiveRecitationPage(
           surahNumber: 1,
@@ -199,7 +199,8 @@ void main() {
       expect(_inkOf('٧')!.a, greaterThan(0));
 
       // The Hifz entry has no switch into the separate Tilawat section.
-      expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'), findsNothing);
+      expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
+          findsNothing);
     });
   });
 
@@ -212,8 +213,8 @@ void main() {
         liveCursor: 3,
         liveStatuses: live,
         // The server re-scores the whole target: everything unrecited fails.
-        serverResult: _server([true, true, true, false, false, false, false,
-            false, false]),
+        serverResult: _server(
+            [true, true, true, false, false, false, false, false, false]),
       );
       expect(review.reach, 3);
       expect(review.result.overallScore, 1.0);
@@ -232,8 +233,8 @@ void main() {
         words: _words,
         liveCursor: 4,
         liveStatuses: live,
-        serverResult: _server([true, false, true, true, false, false, false,
-            false, false]),
+        serverResult: _server(
+            [true, false, true, true, false, false, false, false, false]),
       );
       expect(review.reach, 4);
       expect(review.statuses[1], LiveWordStatus.error);
@@ -246,8 +247,8 @@ void main() {
         words: _words,
         liveCursor: 2,
         liveStatuses: List.filled(_words.length, LiveWordStatus.pending),
-        serverResult: _server([true, true, true, true, true, false, false,
-            false, false]),
+        serverResult:
+            _server([true, true, true, true, true, false, false, false, false]),
       );
       expect(review.reach, 5);
       expect(review.result.overallScore, 1.0);
@@ -293,8 +294,8 @@ void main() {
       statuses[2] = LiveWordStatus.matched;
       // Even if a stale status leaks past the reach, it must not render red.
       statuses[6] = LiveWordStatus.error;
-      await tester.pumpWidget(
-          _view(statuses: statuses, cursor: 3, reviewMode: true));
+      await tester
+          .pumpWidget(_view(statuses: statuses, cursor: 3, reviewMode: true));
 
       expect(_inkOf(_words[0]), t.text);
       expect(_inkOf(_words[1]), t.mismatchInk);
@@ -309,8 +310,8 @@ void main() {
         (tester) async {
       final t = MushafTheme.classic;
       final statuses = List.filled(_words.length, LiveWordStatus.matched);
-      await tester.pumpWidget(_view(
-          statuses: statuses, cursor: _words.length, reviewMode: true));
+      await tester.pumpWidget(
+          _view(statuses: statuses, cursor: _words.length, reviewMode: true));
       for (final e in find.byType(Container).evaluate()) {
         final d = (e.widget as Container).decoration;
         if (d is BoxDecoration) {
@@ -353,8 +354,7 @@ void main() {
 
       // Scroll the page to its end, as a reciter would near the last ayah.
       final scrollable = find.byType(Scrollable).first;
-      final position =
-          tester.state<ScrollableState>(scrollable).position;
+      final position = tester.state<ScrollableState>(scrollable).position;
       position.jumpTo(position.maxScrollExtent);
       await tester.pumpAndSettle();
 

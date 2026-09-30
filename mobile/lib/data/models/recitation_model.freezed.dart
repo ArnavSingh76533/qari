@@ -30,6 +30,12 @@ mixin _$RecitationResult {
   double get fluencyScore;
   @JsonKey(name: 'accuracy_score')
   double get accuracyScore;
+  @JsonKey(name: 'pronunciation_available')
+  bool get pronunciationAvailable;
+  @JsonKey(name: 'tajweed_available')
+  bool get tajweedAvailable;
+  @JsonKey(name: 'fluency_available')
+  bool get fluencyAvailable;
   @JsonKey(name: 'word_verdicts')
   List<WordVerdict> get wordVerdicts;
   @JsonKey(name: 'reference_audio_url')
@@ -79,6 +85,12 @@ mixin _$RecitationResult {
                 other.fluencyScore == fluencyScore) &&
             (identical(other.accuracyScore, accuracyScore) ||
                 other.accuracyScore == accuracyScore) &&
+            (identical(other.pronunciationAvailable, pronunciationAvailable) ||
+                other.pronunciationAvailable == pronunciationAvailable) &&
+            (identical(other.tajweedAvailable, tajweedAvailable) ||
+                other.tajweedAvailable == tajweedAvailable) &&
+            (identical(other.fluencyAvailable, fluencyAvailable) ||
+                other.fluencyAvailable == fluencyAvailable) &&
             const DeepCollectionEquality()
                 .equals(other.wordVerdicts, wordVerdicts) &&
             (identical(other.referenceAudioUrl, referenceAudioUrl) ||
@@ -99,28 +111,32 @@ mixin _$RecitationResult {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      sessionId,
-      surahNumber,
-      ayahNumber,
-      overallScore,
-      pronunciationScore,
-      tajweedScore,
-      fluencyScore,
-      accuracyScore,
-      const DeepCollectionEquality().hash(wordVerdicts),
-      referenceAudioUrl,
-      userAudioUrl,
-      feedback,
-      feedbackUrdu,
-      durationSeconds,
-      createdAt,
-      confidence);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        sessionId,
+        surahNumber,
+        ayahNumber,
+        overallScore,
+        pronunciationScore,
+        tajweedScore,
+        fluencyScore,
+        accuracyScore,
+        pronunciationAvailable,
+        tajweedAvailable,
+        fluencyAvailable,
+        const DeepCollectionEquality().hash(wordVerdicts),
+        referenceAudioUrl,
+        userAudioUrl,
+        feedback,
+        feedbackUrdu,
+        durationSeconds,
+        createdAt,
+        confidence
+      ]);
 
   @override
   String toString() {
-    return 'RecitationResult(sessionId: $sessionId, surahNumber: $surahNumber, ayahNumber: $ayahNumber, overallScore: $overallScore, pronunciationScore: $pronunciationScore, tajweedScore: $tajweedScore, fluencyScore: $fluencyScore, accuracyScore: $accuracyScore, wordVerdicts: $wordVerdicts, referenceAudioUrl: $referenceAudioUrl, userAudioUrl: $userAudioUrl, feedback: $feedback, feedbackUrdu: $feedbackUrdu, durationSeconds: $durationSeconds, createdAt: $createdAt, confidence: $confidence)';
+    return 'RecitationResult(sessionId: $sessionId, surahNumber: $surahNumber, ayahNumber: $ayahNumber, overallScore: $overallScore, pronunciationScore: $pronunciationScore, tajweedScore: $tajweedScore, fluencyScore: $fluencyScore, accuracyScore: $accuracyScore, pronunciationAvailable: $pronunciationAvailable, tajweedAvailable: $tajweedAvailable, fluencyAvailable: $fluencyAvailable, wordVerdicts: $wordVerdicts, referenceAudioUrl: $referenceAudioUrl, userAudioUrl: $userAudioUrl, feedback: $feedback, feedbackUrdu: $feedbackUrdu, durationSeconds: $durationSeconds, createdAt: $createdAt, confidence: $confidence)';
   }
 }
 
@@ -139,6 +155,9 @@ abstract mixin class $RecitationResultCopyWith<$Res> {
       @JsonKey(name: 'tajweed_score') double tajweedScore,
       @JsonKey(name: 'fluency_score') double fluencyScore,
       @JsonKey(name: 'accuracy_score') double accuracyScore,
+      @JsonKey(name: 'pronunciation_available') bool pronunciationAvailable,
+      @JsonKey(name: 'tajweed_available') bool tajweedAvailable,
+      @JsonKey(name: 'fluency_available') bool fluencyAvailable,
       @JsonKey(name: 'word_verdicts') List<WordVerdict> wordVerdicts,
       @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
       @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -170,6 +189,9 @@ class _$RecitationResultCopyWithImpl<$Res>
     Object? tajweedScore = null,
     Object? fluencyScore = null,
     Object? accuracyScore = null,
+    Object? pronunciationAvailable = null,
+    Object? tajweedAvailable = null,
+    Object? fluencyAvailable = null,
     Object? wordVerdicts = null,
     Object? referenceAudioUrl = freezed,
     Object? userAudioUrl = freezed,
@@ -212,6 +234,18 @@ class _$RecitationResultCopyWithImpl<$Res>
           ? _self.accuracyScore
           : accuracyScore // ignore: cast_nullable_to_non_nullable
               as double,
+      pronunciationAvailable: null == pronunciationAvailable
+          ? _self.pronunciationAvailable
+          : pronunciationAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
+      tajweedAvailable: null == tajweedAvailable
+          ? _self.tajweedAvailable
+          : tajweedAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
+      fluencyAvailable: null == fluencyAvailable
+          ? _self.fluencyAvailable
+          : fluencyAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
       wordVerdicts: null == wordVerdicts
           ? _self.wordVerdicts
           : wordVerdicts // ignore: cast_nullable_to_non_nullable
@@ -350,6 +384,10 @@ extension RecitationResultPatterns on RecitationResult {
             @JsonKey(name: 'tajweed_score') double tajweedScore,
             @JsonKey(name: 'fluency_score') double fluencyScore,
             @JsonKey(name: 'accuracy_score') double accuracyScore,
+            @JsonKey(name: 'pronunciation_available')
+            bool pronunciationAvailable,
+            @JsonKey(name: 'tajweed_available') bool tajweedAvailable,
+            @JsonKey(name: 'fluency_available') bool fluencyAvailable,
             @JsonKey(name: 'word_verdicts') List<WordVerdict> wordVerdicts,
             @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
             @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -373,6 +411,9 @@ extension RecitationResultPatterns on RecitationResult {
             _that.tajweedScore,
             _that.fluencyScore,
             _that.accuracyScore,
+            _that.pronunciationAvailable,
+            _that.tajweedAvailable,
+            _that.fluencyAvailable,
             _that.wordVerdicts,
             _that.referenceAudioUrl,
             _that.userAudioUrl,
@@ -410,6 +451,10 @@ extension RecitationResultPatterns on RecitationResult {
             @JsonKey(name: 'tajweed_score') double tajweedScore,
             @JsonKey(name: 'fluency_score') double fluencyScore,
             @JsonKey(name: 'accuracy_score') double accuracyScore,
+            @JsonKey(name: 'pronunciation_available')
+            bool pronunciationAvailable,
+            @JsonKey(name: 'tajweed_available') bool tajweedAvailable,
+            @JsonKey(name: 'fluency_available') bool fluencyAvailable,
             @JsonKey(name: 'word_verdicts') List<WordVerdict> wordVerdicts,
             @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
             @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -432,6 +477,9 @@ extension RecitationResultPatterns on RecitationResult {
             _that.tajweedScore,
             _that.fluencyScore,
             _that.accuracyScore,
+            _that.pronunciationAvailable,
+            _that.tajweedAvailable,
+            _that.fluencyAvailable,
             _that.wordVerdicts,
             _that.referenceAudioUrl,
             _that.userAudioUrl,
@@ -468,6 +516,10 @@ extension RecitationResultPatterns on RecitationResult {
             @JsonKey(name: 'tajweed_score') double tajweedScore,
             @JsonKey(name: 'fluency_score') double fluencyScore,
             @JsonKey(name: 'accuracy_score') double accuracyScore,
+            @JsonKey(name: 'pronunciation_available')
+            bool pronunciationAvailable,
+            @JsonKey(name: 'tajweed_available') bool tajweedAvailable,
+            @JsonKey(name: 'fluency_available') bool fluencyAvailable,
             @JsonKey(name: 'word_verdicts') List<WordVerdict> wordVerdicts,
             @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
             @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -490,6 +542,9 @@ extension RecitationResultPatterns on RecitationResult {
             _that.tajweedScore,
             _that.fluencyScore,
             _that.accuracyScore,
+            _that.pronunciationAvailable,
+            _that.tajweedAvailable,
+            _that.fluencyAvailable,
             _that.wordVerdicts,
             _that.referenceAudioUrl,
             _that.userAudioUrl,
@@ -516,6 +571,10 @@ class _RecitationResult implements RecitationResult {
       @JsonKey(name: 'tajweed_score') this.tajweedScore = 0.0,
       @JsonKey(name: 'fluency_score') this.fluencyScore = 0.0,
       @JsonKey(name: 'accuracy_score') this.accuracyScore = 0.0,
+      @JsonKey(name: 'pronunciation_available')
+      this.pronunciationAvailable = false,
+      @JsonKey(name: 'tajweed_available') this.tajweedAvailable = false,
+      @JsonKey(name: 'fluency_available') this.fluencyAvailable = false,
       @JsonKey(name: 'word_verdicts')
       final List<WordVerdict> wordVerdicts = const [],
       @JsonKey(name: 'reference_audio_url') this.referenceAudioUrl,
@@ -553,6 +612,15 @@ class _RecitationResult implements RecitationResult {
   @override
   @JsonKey(name: 'accuracy_score')
   final double accuracyScore;
+  @override
+  @JsonKey(name: 'pronunciation_available')
+  final bool pronunciationAvailable;
+  @override
+  @JsonKey(name: 'tajweed_available')
+  final bool tajweedAvailable;
+  @override
+  @JsonKey(name: 'fluency_available')
+  final bool fluencyAvailable;
   final List<WordVerdict> _wordVerdicts;
   @override
   @JsonKey(name: 'word_verdicts')
@@ -620,6 +688,12 @@ class _RecitationResult implements RecitationResult {
                 other.fluencyScore == fluencyScore) &&
             (identical(other.accuracyScore, accuracyScore) ||
                 other.accuracyScore == accuracyScore) &&
+            (identical(other.pronunciationAvailable, pronunciationAvailable) ||
+                other.pronunciationAvailable == pronunciationAvailable) &&
+            (identical(other.tajweedAvailable, tajweedAvailable) ||
+                other.tajweedAvailable == tajweedAvailable) &&
+            (identical(other.fluencyAvailable, fluencyAvailable) ||
+                other.fluencyAvailable == fluencyAvailable) &&
             const DeepCollectionEquality()
                 .equals(other._wordVerdicts, _wordVerdicts) &&
             (identical(other.referenceAudioUrl, referenceAudioUrl) ||
@@ -640,28 +714,32 @@ class _RecitationResult implements RecitationResult {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      sessionId,
-      surahNumber,
-      ayahNumber,
-      overallScore,
-      pronunciationScore,
-      tajweedScore,
-      fluencyScore,
-      accuracyScore,
-      const DeepCollectionEquality().hash(_wordVerdicts),
-      referenceAudioUrl,
-      userAudioUrl,
-      feedback,
-      feedbackUrdu,
-      durationSeconds,
-      createdAt,
-      confidence);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        sessionId,
+        surahNumber,
+        ayahNumber,
+        overallScore,
+        pronunciationScore,
+        tajweedScore,
+        fluencyScore,
+        accuracyScore,
+        pronunciationAvailable,
+        tajweedAvailable,
+        fluencyAvailable,
+        const DeepCollectionEquality().hash(_wordVerdicts),
+        referenceAudioUrl,
+        userAudioUrl,
+        feedback,
+        feedbackUrdu,
+        durationSeconds,
+        createdAt,
+        confidence
+      ]);
 
   @override
   String toString() {
-    return 'RecitationResult(sessionId: $sessionId, surahNumber: $surahNumber, ayahNumber: $ayahNumber, overallScore: $overallScore, pronunciationScore: $pronunciationScore, tajweedScore: $tajweedScore, fluencyScore: $fluencyScore, accuracyScore: $accuracyScore, wordVerdicts: $wordVerdicts, referenceAudioUrl: $referenceAudioUrl, userAudioUrl: $userAudioUrl, feedback: $feedback, feedbackUrdu: $feedbackUrdu, durationSeconds: $durationSeconds, createdAt: $createdAt, confidence: $confidence)';
+    return 'RecitationResult(sessionId: $sessionId, surahNumber: $surahNumber, ayahNumber: $ayahNumber, overallScore: $overallScore, pronunciationScore: $pronunciationScore, tajweedScore: $tajweedScore, fluencyScore: $fluencyScore, accuracyScore: $accuracyScore, pronunciationAvailable: $pronunciationAvailable, tajweedAvailable: $tajweedAvailable, fluencyAvailable: $fluencyAvailable, wordVerdicts: $wordVerdicts, referenceAudioUrl: $referenceAudioUrl, userAudioUrl: $userAudioUrl, feedback: $feedback, feedbackUrdu: $feedbackUrdu, durationSeconds: $durationSeconds, createdAt: $createdAt, confidence: $confidence)';
   }
 }
 
@@ -682,6 +760,9 @@ abstract mixin class _$RecitationResultCopyWith<$Res>
       @JsonKey(name: 'tajweed_score') double tajweedScore,
       @JsonKey(name: 'fluency_score') double fluencyScore,
       @JsonKey(name: 'accuracy_score') double accuracyScore,
+      @JsonKey(name: 'pronunciation_available') bool pronunciationAvailable,
+      @JsonKey(name: 'tajweed_available') bool tajweedAvailable,
+      @JsonKey(name: 'fluency_available') bool fluencyAvailable,
       @JsonKey(name: 'word_verdicts') List<WordVerdict> wordVerdicts,
       @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
       @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -713,6 +794,9 @@ class __$RecitationResultCopyWithImpl<$Res>
     Object? tajweedScore = null,
     Object? fluencyScore = null,
     Object? accuracyScore = null,
+    Object? pronunciationAvailable = null,
+    Object? tajweedAvailable = null,
+    Object? fluencyAvailable = null,
     Object? wordVerdicts = null,
     Object? referenceAudioUrl = freezed,
     Object? userAudioUrl = freezed,
@@ -755,6 +839,18 @@ class __$RecitationResultCopyWithImpl<$Res>
           ? _self.accuracyScore
           : accuracyScore // ignore: cast_nullable_to_non_nullable
               as double,
+      pronunciationAvailable: null == pronunciationAvailable
+          ? _self.pronunciationAvailable
+          : pronunciationAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
+      tajweedAvailable: null == tajweedAvailable
+          ? _self.tajweedAvailable
+          : tajweedAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
+      fluencyAvailable: null == fluencyAvailable
+          ? _self.fluencyAvailable
+          : fluencyAvailable // ignore: cast_nullable_to_non_nullable
+              as bool,
       wordVerdicts: null == wordVerdicts
           ? _self._wordVerdicts
           : wordVerdicts // ignore: cast_nullable_to_non_nullable

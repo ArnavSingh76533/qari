@@ -17,6 +17,9 @@ _RecitationResult _$RecitationResultFromJson(Map<String, dynamic> json) =>
       tajweedScore: (json['tajweed_score'] as num?)?.toDouble() ?? 0.0,
       fluencyScore: (json['fluency_score'] as num?)?.toDouble() ?? 0.0,
       accuracyScore: (json['accuracy_score'] as num?)?.toDouble() ?? 0.0,
+      pronunciationAvailable: json['pronunciation_available'] as bool? ?? false,
+      tajweedAvailable: json['tajweed_available'] as bool? ?? false,
+      fluencyAvailable: json['fluency_available'] as bool? ?? false,
       wordVerdicts: (json['word_verdicts'] as List<dynamic>?)
               ?.map((e) => WordVerdict.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -40,6 +43,9 @@ Map<String, dynamic> _$RecitationResultToJson(_RecitationResult instance) =>
       'tajweed_score': instance.tajweedScore,
       'fluency_score': instance.fluencyScore,
       'accuracy_score': instance.accuracyScore,
+      'pronunciation_available': instance.pronunciationAvailable,
+      'tajweed_available': instance.tajweedAvailable,
+      'fluency_available': instance.fluencyAvailable,
       'word_verdicts': instance.wordVerdicts,
       'reference_audio_url': instance.referenceAudioUrl,
       'user_audio_url': instance.userAudioUrl,

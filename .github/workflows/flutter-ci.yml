@@ -30,10 +30,6 @@ jobs:
       - name: Pub get
         working-directory: mobile
         run: flutter pub get
-      - name: Generate model code
-        working-directory: mobile
-        timeout-minutes: 5
-        run: dart run build_runner build --delete-conflicting-outputs --build-filter=lib/data/models/recitation_model.freezed.dart --build-filter=lib/data/models/recitation_model.g.dart
       - name: Format changed Dart files
         working-directory: mobile
         run: |

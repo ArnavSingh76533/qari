@@ -114,6 +114,7 @@ class BatchWordMatch:
     confidence: float
     start_ms: Optional[int]
     end_ms: Optional[int]
+    reference_audio_url: Optional[str]
 
 
 @dataclass
@@ -137,15 +138,26 @@ class BatchWordMatchingPipeline:
         self._word_aligner = WordAligner()
 
     def analyze(
-        self, audio, sample_rate, surah, ayah, session_id, *, user_audio_url=""
+        self, audio, sample_rate, surah, ayahs, session_id, *, user_audio_url=""
     ) -> BatchWordMatchResult:
-        reference = self.reference_store.get(surah, ayah)
-        if reference is None:
-            raise ValueError(f"No reference data for surah {surah}, ayah {ayah}")
+        expected_words = []
+        word_reference_urls = []
+        for ayah in ayahs:
+            reference = self.reference_store.get(surah, ayah)
+            if reference is None:
+                raise ValueError(f"No reference data for surah {surah}, ayah {ayah}")
+            ayah_words = reference.expected_words
+            expected_words.extend(ayah_words)
+            reference_url = (
+                reference.reference_audio_url or _build_reference_audio_url(surah, ayah)
+            )
+            word_reference_urls.extend([reference_url] * len(ayah_words))
 
+        # Align the entire ordered range once. One hypothesis token can then
+        # support only one reference position, including across repeated ayahs.
         transcription = self.asr.transcribe(audio, sample_rate)
         alignment = self._word_aligner.align(
-            reference.expected_words,
+            expected_words,
             transcription.normalized_words,
             confidences=[token.confidence for token in transcription.tokens],
         )
@@ -163,9 +175,15 @@ class BatchWordMatchingPipeline:
                 confidence=token.confidence if token is not None else 0.0,
                 start_ms=round(token.start_time * 1000) if token is not None else None,
                 end_ms=round(token.end_time * 1000) if token is not None else None,
+                reference_audio_url=(
+                    word_reference_urls[aligned.ref_index]
+                    if aligned.ref_index is not None
+                    else None
+                ),
             ))
         return BatchWordMatchResult(
-            words=words, reference_audio_url=reference.reference_audio_url
+            words=words,
+            reference_audio_url=word_reference_urls[0] if word_reference_urls else "",
         )
 
 
@@ -278,7 +296,9 @@ def _reference_only_verdicts(
                 "end_ms": getattr(word_result, "end_ms", None),
                 "error_type": error_type,
                 "error_description": error_description,
-                "reference_audio_url": reference_audio_url,
+                "reference_audio_url": (
+                    getattr(word_result, "reference_audio_url", None) or reference_audio_url
+                ),
                 "user_audio_url": user_audio_url,
                 "phoneme_errors": [],
             }
@@ -331,8 +351,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
 
     pipeline = _get_fast_pipeline()
     word_verdicts: list[dict] = []
-    global_index = 0
-    evaluated_ayahs = 0
+    available_ayahs: list[int] = []
     correct_reference_words = 0
     reference_word_count = 0
     result_confidences: list[float] = []
@@ -348,7 +367,9 @@ async def run_fast_ml_inference(job: dict) -> dict:
                 ayah=ayah,
             )
             continue
+        available_ayahs.append(ayah)
 
+    if available_ayahs:
         try:
             ml_result = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -356,7 +377,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
                     audio,
                     sample_rate,
                     surah,
-                    ayah,
+                    available_ayahs,
                     session_id,
                     user_audio_url=user_audio_url or "",
                 ),
@@ -364,32 +385,27 @@ async def run_fast_ml_inference(job: dict) -> dict:
             )
         except asyncio.TimeoutError as exc:
             raise TimeoutError(
-                f"Analysis exceeded {BATCH_ANALYSIS_TIMEOUT_SEC}s for {surah}:{ayah}"
+                f"Analysis exceeded {BATCH_ANALYSIS_TIMEOUT_SEC}s "
+                f"for {surah}:{ayah_from}-{ayah_to}"
             ) from exc
 
-        evaluated_ayahs += 1
-        ignored_insertions += sum(1 for row in ml_result.words if not row.reference)
-        ayah_reference_url = (
+        ignored_insertions = sum(1 for row in ml_result.words if not row.reference)
+        reference_audio_url = (
             ml_result.reference_audio_url
-            or _build_reference_audio_url(surah, ayah)
+            or _build_reference_audio_url(surah, available_ayahs[0])
         )
-        if reference_audio_url is None:
-            reference_audio_url = ayah_reference_url
 
-        ayah_verdicts, global_index, ayah_correct, ayah_confidences = (
+        word_verdicts, _, correct_reference_words, result_confidences = (
             _reference_only_verdicts(
                 ml_result.words,
-                start_index=global_index,
-                reference_audio_url=ayah_reference_url,
+                start_index=0,
+                reference_audio_url=reference_audio_url,
                 user_audio_url=user_audio_url,
             )
         )
-        word_verdicts.extend(ayah_verdicts)
-        correct_reference_words += ayah_correct
-        reference_word_count += len(ayah_verdicts)
-        result_confidences.extend(ayah_confidences)
+        reference_word_count = len(word_verdicts)
 
-    if evaluated_ayahs == 0 or reference_word_count == 0:
+    if not available_ayahs or reference_word_count == 0:
         return _build_result_dict(
             job=job,
             session_id=session_id,

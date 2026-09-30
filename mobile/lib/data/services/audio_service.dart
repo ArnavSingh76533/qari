@@ -241,10 +241,13 @@ class AudioService {
       // self-signed host we download via an HttpClient that accepts the cert,
       // cache it to a temp file, and play from there — avoiding the TLS error.
       final uri = Uri.parse(url);
-      final headers = recitationAudioHeaders(url, await _storage.getAuthToken());
+      final headers =
+          recitationAudioHeaders(url, await _storage.getAuthToken());
       if (headers.isNotEmpty) {
         final file = await _downloadToTemp(url, headers: headers);
-        if (file == null) throw StateError('Could not load your recording. Sign in and try again.');
+        if (file == null)
+          throw StateError(
+              'Could not load your recording. Sign in and try again.');
         await _player.setAudioSource(AudioSource.file(file.path));
         await _player.setSpeed(_currentSpeed);
         await _player.play();

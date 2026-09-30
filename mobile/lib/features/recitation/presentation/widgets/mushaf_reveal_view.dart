@@ -143,9 +143,13 @@ class MushafRevealView extends StatelessWidget {
   // guessing from character counts. Quran text and verse order never change.
   double _pageFontSize(BuildContext context, double width) {
     final scaler = MediaQuery.textScalerOf(context);
-    final cacheKey = (words.join('\u0000'),
-      blockHeights.entries.map((e) => '${e.key}:${e.value}').join(','),
-      width, minimumHeight, scaler);
+    final cacheKey = (
+      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(',')].join('\u0001'),
+      '${blocksBefore.keys.join(',')}|${blockHeights.entries.map((e) => '${e.key}:${e.value}').join(',')}',
+      width,
+      minimumHeight,
+      scaler
+    );
     final cached = _fontCache[cacheKey];
     if (cached != null) return cached;
     double heightAt(double size) {
@@ -157,6 +161,7 @@ class MushafRevealView extends StatelessWidget {
         totalHeight += rowHeight + 6;
         usedWidth = rowHeight = 0;
       }
+
       void addText(String text) {
         final painter = TextPainter(
           text: TextSpan(text: text, style: _arabicStyle(size, mushaf.text)),
@@ -169,6 +174,7 @@ class MushafRevealView extends StatelessWidget {
         if (painter.height > rowHeight) rowHeight = painter.height;
         painter.dispose();
       }
+
       for (var i = 0; i < words.length; i++) {
         if (blocksBefore.containsKey(i)) {
           finishRow();
@@ -181,6 +187,7 @@ class MushafRevealView extends StatelessWidget {
       finishRow();
       return totalHeight - 6;
     }
+
     var low = 18.0;
     var high = 40.0;
     for (var i = 0; i < 7; i++) {
@@ -233,18 +240,18 @@ class MushafRevealView extends StatelessWidget {
           i < viewStates.length ? viewStates[i] : LiveWordViewState.unspoken;
       final tap = onMistakeTap;
       Widget word = _RevealedWord(
-          key: isCursor ? cursorKey : null,
-          text: words[i],
-          viewState: viewState,
-          reviewMode: reviewMode,
-          hideUnspoken: hideUnspoken,
-          tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
-              ? tajweedSpans[i]
-              : null,
-          fontSize: size,
-          theme: theme,
-          mushaf: mushaf,
-        );
+        key: isCursor ? cursorKey : null,
+        text: words[i],
+        viewState: viewState,
+        reviewMode: reviewMode,
+        hideUnspoken: hideUnspoken,
+        tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
+            ? tajweedSpans[i]
+            : null,
+        fontSize: size,
+        theme: theme,
+        mushaf: mushaf,
+      );
       if (tap != null && viewState == LiveWordViewState.mismatch) {
         word = GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -283,8 +290,12 @@ class MushafRevealView extends StatelessWidget {
         constraints: BoxConstraints(minHeight: minimumHeight),
         child: Wrap(
           direction: Axis.horizontal,
-          alignment: minimumHeight > 0 ? WrapAlignment.spaceBetween : WrapAlignment.start,
-          runAlignment: minimumHeight > 0 ? WrapAlignment.spaceBetween : WrapAlignment.start,
+          alignment: minimumHeight > 0
+              ? WrapAlignment.spaceBetween
+              : WrapAlignment.start,
+          runAlignment: minimumHeight > 0
+              ? WrapAlignment.spaceBetween
+              : WrapAlignment.start,
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 2,
           runSpacing: 6,
@@ -329,7 +340,8 @@ class _RevealedWord extends StatelessWidget {
 
   /// Hifz mode hides every word not yet confirmed — the listening cursor too,
   /// or the halo would give the next word away.
-  bool get _isHidden => !reviewMode && hideUnspoken && (_isUnspoken || _isActive);
+  bool get _isHidden =>
+      !reviewMode && hideUnspoken && (_isUnspoken || _isActive);
 
   Color get _ink {
     // Red is reachable ONLY via [LiveWordViewState.mismatch], which
@@ -361,11 +373,9 @@ class _RevealedWord extends StatelessWidget {
     //   correct   -> solid ink + soft green background tint (live only; the
     //                review page keeps correct words plain)
     //   mismatch  -> red ink + a red underline
-    final isCorrect =
-        !reviewMode && viewState == LiveWordViewState.correct;
-    final Color? wash = _isActive
-        ? mushaf.activeTint
-        : (isCorrect ? mushaf.correctTint : null);
+    final isCorrect = !reviewMode && viewState == LiveWordViewState.correct;
+    final Color? wash =
+        _isActive ? mushaf.activeTint : (isCorrect ? mushaf.correctTint : null);
     // Only a genuine mistake gets a red underline. The active cursor gets a
     // halo instead of an underline so the listening word is unmistakable
     // without borrowing the visual language of an error.
@@ -441,8 +451,7 @@ class _RevealedWord extends StatelessWidget {
       while (j < text.length && ruleAt[j] == rule) j++;
       final color = rule == null
           ? null
-          : AppTheme.ensureContrast(
-              AppTheme.getTajweedColor(rule), brightness);
+          : AppTheme.ensureContrast(AppTheme.getTajweedColor(rule), brightness);
       children.add(
         TextSpan(
           text: text.substring(i, j),

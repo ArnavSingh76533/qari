@@ -150,9 +150,10 @@ class _HomePageState extends ConsumerState<HomePage> {
       onTap: () async {
         await Haptics.vibrate(HapticsType.medium);
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const LiveRecitationPage(
-            initialMode: RecitationMode.hifz,
-          )),
+          MaterialPageRoute(
+              builder: (_) => const LiveRecitationPage(
+                    initialMode: RecitationMode.hifz,
+                  )),
         );
       },
       child: Container(
@@ -318,8 +319,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     }
     if (node != null) {
       final id = node.lessonId ?? int.tryParse(node.id);
-      final curriculumLesson =
-          await CurriculumService.instance.findLesson(id);
+      final curriculumLesson = await CurriculumService.instance.findLesson(id);
       if (curriculumLesson != null) {
         _navigateToLesson(curriculumLesson);
         return;
@@ -364,180 +364,184 @@ class _HomeTabState extends ConsumerState<HomeTab> {
       body: SereneBackground(
         child: SafeArea(
           child: RefreshIndicator(
-          onRefresh: () async {
-            await Haptics.vibrate(HapticsType.medium);
-            await _loadHome();
-          },
-          child: CustomScrollView(
-            slivers: [
-              // ─── Header ──────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isUrdu ? 'السلام علیکم' : 'Assalamu Alaikum',
-                              style: theme.textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                              textDirection:
-                                  isUrdu ? TextDirection.rtl : TextDirection.ltr,
-                            ),
-                            if (_displayName.isNotEmpty)
+            onRefresh: () async {
+              await Haptics.vibrate(HapticsType.medium);
+              await _loadHome();
+            },
+            child: CustomScrollView(
+              slivers: [
+                // ─── Header ──────────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                _displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                isUrdu ? 'السلام علیکم' : 'Assalamu Alaikum',
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                textDirection: isUrdu
+                                    ? TextDirection.rtl
+                                    : TextDirection.ltr,
+                              ),
+                              if (_displayName.isNotEmpty)
+                                Text(
+                                  _displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ProfilePage(),
+                            ),
+                          ),
+                          icon: Icon(
+                            Icons.person_rounded,
+                            color: theme.colorScheme.primary,
+                          ),
+                          tooltip: 'Profile',
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.local_fire_department_rounded,
+                                color: Colors.orange.shade700,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$_streak',
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.orange.shade700,
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ProfilePage(),
+                            ],
                           ),
                         ),
-                        icon: Icon(
-                          Icons.person_rounded,
-                          color: theme.colorScheme.primary,
-                        ),
-                        tooltip: 'Profile',
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.local_fire_department_rounded,
-                              color: Colors.orange.shade700,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$_streak',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ─── XP Bar ──────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: _XpBar(
-                    currentXp: _xpToday,
-                    weeklyGoal: _xpWeeklyGoal,
-                  ),
-                ),
-              ),
-
-              // ─── Continue Card ───────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                  child: _continueLesson != null
-                      ? ContinueCard(
-                          lessonTitle: _continueLesson!.title,
-                          moduleNumber: _continueLesson!.moduleNumber,
-                          progressPercent: _continueLesson!.progressPercent,
-                          onTap: () => _openLesson(lesson: _continueLesson),
-                        )
-                      : _StartLearningCard(
-                          isUrdu: isUrdu,
-                          onTap: () => _openLesson(
-                            node: _pathNodes != null && _pathNodes!.isNotEmpty
-                                ? _pathNodes!.first
-                                : null,
-                          ),
-                        ),
-                ),
-              ),
-
-              // ─── Flashcards Due + Daily Goal Ring ────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _FlashcardsDueCard(
-                          dueCount: 12,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const FlashcardPage(),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DailyGoalRing(
-                          current: _dailyGoalProgress,
-                          goal: _dailyGoal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ─── Learning Path Map ───────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  child: Text(
-                    isUrdu ? 'سیکھنے کا راستہ' : 'Learning Path',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      ],
                     ),
-                    textDirection: isUrdu ? TextDirection.rtl : TextDirection.ltr,
                   ),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: LearningPathMap(
-                    nodes: _pathNodes,
-                    onNodeTap: (node) => _openLesson(node: node),
-                  ),
-                ),
-              ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
-            ],
+                // ─── XP Bar ──────────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: _XpBar(
+                      currentXp: _xpToday,
+                      weeklyGoal: _xpWeeklyGoal,
+                    ),
+                  ),
+                ),
+
+                // ─── Continue Card ───────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: _continueLesson != null
+                        ? ContinueCard(
+                            lessonTitle: _continueLesson!.title,
+                            moduleNumber: _continueLesson!.moduleNumber,
+                            progressPercent: _continueLesson!.progressPercent,
+                            onTap: () => _openLesson(lesson: _continueLesson),
+                          )
+                        : _StartLearningCard(
+                            isUrdu: isUrdu,
+                            onTap: () => _openLesson(
+                              node: _pathNodes != null && _pathNodes!.isNotEmpty
+                                  ? _pathNodes!.first
+                                  : null,
+                            ),
+                          ),
+                  ),
+                ),
+
+                // ─── Flashcards Due + Daily Goal Ring ────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _FlashcardsDueCard(
+                            dueCount: 12,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const FlashcardPage(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DailyGoalRing(
+                            current: _dailyGoalProgress,
+                            goal: _dailyGoal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ─── Learning Path Map ───────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text(
+                      isUrdu ? 'سیکھنے کا راستہ' : 'Learning Path',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textDirection:
+                          isUrdu ? TextDirection.rtl : TextDirection.ltr,
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: LearningPathMap(
+                      nodes: _pathNodes,
+                      onNodeTap: (node) => _openLesson(node: node),
+                    ),
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -598,7 +602,8 @@ class _StartLearningCard extends StatelessWidget {
                           ? 'نیچے دیے گئے سبق پر ٹیپ کریں'
                           : 'Tap a lesson below to begin',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -695,7 +700,8 @@ class _FlashcardsDueCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.style_rounded, color: theme.colorScheme.secondary, size: 20),
+                  Icon(Icons.style_rounded,
+                      color: theme.colorScheme.secondary, size: 20),
                   const SizedBox(width: 6),
                   Text(
                     'Flashcards',
