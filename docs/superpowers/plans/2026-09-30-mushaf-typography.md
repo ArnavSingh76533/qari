@@ -44,7 +44,7 @@
 
 - [x] Trigger preview builds for renderer changes; increment preview version code per workflow run.
 - [x] Require typography/full-page tests before building.
-- [ ] Verify package, signature and artifact hash; deliver the updated APK.
+- [x] Verify package, signature and artifact hash; deliver the updated APK.
 
 ## Verification ledger
 
@@ -58,3 +58,6 @@
 - The independently requested V1 page/line fields produced exactly the same 579 page arrays as the initial API metadata.
 - Final important review finding resolved: enlarged-text/narrow-paper regression went RED (501px overflow) to GREEN, and the full suite passed.
 - Final formatting commit copies the exact test source emitted and tested by CI and restores non-mutating formatting checks; no app code or asset changes.
+
+- APK build 36780661324 passed its 24 focused tests and produced version 1.0.49+75 (36,526,577 bytes), package com.qari.app.uipreview. Android v2 signature verified. Downloaded ZIP and APK SHA256 digests match GitHub/CI; APK bundles the verified Page 3 layout.
+- APK SHA256: 3e8431a1c97a6864d4fd53b391d69667749c1353a2a93290062144500adc8440.
