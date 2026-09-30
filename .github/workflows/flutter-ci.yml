@@ -42,4 +42,5 @@ jobs:
             test/recitation_screen_test.dart \
             test/recitation_word_mapping_test.dart \
             test/live_recitation_test.dart \
-            test/full_page_recitation_test.dart
+            test/full_page_recitation_test.dart \
+            test/recitation_evidence_test.dart
