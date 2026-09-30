@@ -98,6 +98,8 @@ class MushafSurahBanner extends StatelessWidget {
     required this.name,
     this.nameArabic,
     this.meta,
+    this.height = 74,
+    this.showEnglishName = true,
   });
 
   final MushafTheme theme;
@@ -108,6 +110,8 @@ class MushafSurahBanner extends StatelessWidget {
 
   /// Optional caption under the plate (e.g. "Meccan · 7 ayahs").
   final String? meta;
+  final double height;
+  final bool showEnglishName;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +120,7 @@ class MushafSurahBanner extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 74,
+          height: height,
           width: double.infinity,
           child: CustomPaint(
             painter: _SurahPlatePainter(theme),
@@ -137,12 +141,12 @@ class MushafSurahBanner extends StatelessWidget {
                         style: TextStyle(
                           fontFamily: AppConstants.arabicFontFamily,
                           color: theme.text,
-                          fontSize: 24,
+                          fontSize: height < 74 ? 20 : 24,
                           height: 1.25,
                         ),
                       ),
                     ),
-                    if (nameArabic != null)
+                    if (nameArabic != null && showEnglishName)
                       Text(
                         name,
                         style: TextStyle(
@@ -198,8 +202,8 @@ class _SurahPlatePainter extends CustomPainter {
     for (var x = inner.left - inner.height; x < inner.right; x += step) {
       canvas.drawLine(Offset(x, inner.bottom),
           Offset(x + inner.height, inner.top), lattice);
-      canvas.drawLine(
-          Offset(x, inner.top), Offset(x + inner.height, inner.bottom), lattice);
+      canvas.drawLine(Offset(x, inner.top),
+          Offset(x + inner.height, inner.bottom), lattice);
     }
     canvas.restore();
 
@@ -252,7 +256,8 @@ class _SurahPlatePainter extends CustomPainter {
       ..cubicTo(l + e * 0.25, cy - hh * 0.2, l + e * 0.35, top, l + e, top)
       ..lineTo(rgt - e, top)
       ..cubicTo(rgt - e * 0.35, top, rgt - e * 0.25, cy - hh * 0.2, rgt, cy)
-      ..cubicTo(rgt - e * 0.25, cy + hh * 0.2, rgt - e * 0.35, bot, rgt - e, bot)
+      ..cubicTo(
+          rgt - e * 0.25, cy + hh * 0.2, rgt - e * 0.35, bot, rgt - e, bot)
       ..lineTo(l + e, bot)
       ..cubicTo(l + e * 0.35, bot, l + e * 0.25, cy + hh * 0.2, l, cy)
       ..close();
@@ -287,9 +292,16 @@ class _SurahPlatePainter extends CustomPainter {
 /// The centred Bismillah line, set in the Uthmanic Hafs face like the rest of
 /// the page.
 class MushafBismillah extends StatelessWidget {
-  const MushafBismillah({super.key, required this.theme});
+  const MushafBismillah({
+    super.key,
+    required this.theme,
+    this.fontSize = 24,
+    this.lineHeight = 1.9,
+  });
 
   final MushafTheme theme;
+  final double fontSize;
+  final double lineHeight;
 
   static const String bismillah = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ';
 
@@ -303,8 +315,8 @@ class MushafBismillah extends StatelessWidget {
         style: TextStyle(
           fontFamily: AppConstants.arabicFontFamily,
           color: theme.text,
-          fontSize: 24,
-          height: 1.9,
+          fontSize: fontSize,
+          height: lineHeight,
         ),
       ),
     );

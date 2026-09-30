@@ -11,10 +11,17 @@ abstract class RecitationResult with _$RecitationResult {
     @JsonKey(name: 'surah_number') required int surahNumber,
     @JsonKey(name: 'ayah_number') required int ayahNumber,
     @JsonKey(name: 'overall_score') required double overallScore,
-    @JsonKey(name: 'pronunciation_score') @Default(0.0) double pronunciationScore,
+    @JsonKey(name: 'pronunciation_score')
+    @Default(0.0)
+    double pronunciationScore,
     @JsonKey(name: 'tajweed_score') @Default(0.0) double tajweedScore,
     @JsonKey(name: 'fluency_score') @Default(0.0) double fluencyScore,
     @JsonKey(name: 'accuracy_score') @Default(0.0) double accuracyScore,
+    @JsonKey(name: 'pronunciation_available')
+    @Default(false)
+    bool pronunciationAvailable,
+    @JsonKey(name: 'tajweed_available') @Default(false) bool tajweedAvailable,
+    @JsonKey(name: 'fluency_available') @Default(false) bool fluencyAvailable,
     @JsonKey(name: 'word_verdicts') @Default([]) List<WordVerdict> wordVerdicts,
     @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
     @JsonKey(name: 'user_audio_url') String? userAudioUrl,
@@ -43,7 +50,9 @@ abstract class WordVerdict with _$WordVerdict {
     @JsonKey(name: 'error_description') String? errorDescription,
     @JsonKey(name: 'reference_audio_url') String? referenceAudioUrl,
     @JsonKey(name: 'user_audio_url') String? userAudioUrl,
-    @JsonKey(name: 'phoneme_errors') @Default([]) List<PhonemeError> phonemeErrors,
+    @JsonKey(name: 'phoneme_errors')
+    @Default([])
+    List<PhonemeError> phonemeErrors,
   }) = _WordVerdict;
 
   factory WordVerdict.fromJson(Map<String, dynamic> json) =>

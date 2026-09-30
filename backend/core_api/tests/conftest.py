@@ -10,6 +10,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Set test env before importing app
+os.environ.setdefault("QARI_ENVIRONMENT", "test")
+os.environ.setdefault("QARI_JWT_SECRET_KEY", "test-only-signing-key-for-security-regressions-2026")
 os.environ.setdefault("QARI_DEBUG", "true")
 os.environ.setdefault("QARI_DATABASE_URL", "postgresql+asyncpg://qari:qari@localhost:5432/qari_test")
 os.environ.setdefault("QARI_REDIS_URL", "redis://localhost:6379/1")

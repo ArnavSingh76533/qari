@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:haptic_feedback/haptic_feedback.dart';
@@ -44,8 +46,8 @@ class LiveRecitationPage extends StatefulWidget {
   final int? surahNumber;
   final int? ayahNumber;
 
-  /// Forces the opening mode (the Tilawat tab always opens in Tilawat). When
-  /// null, the user's last choice is restored.
+  /// The entry point owns the mode. AI recitation defaults to Hifz; the
+  /// Tilawat entry explicitly requests visible text.
   final RecitationMode? initialMode;
 
   const LiveRecitationPage({
@@ -70,7 +72,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   bool _chromeVisible = true;
 
   /// Tilawat (full page visible) or Hifz (unsaid words hidden).
-  RecitationMode _mode = RecitationMode.tilawat;
+  late final RecitationMode _mode;
   final AudioService _audioService = AudioService();
 
   LiveRecitationUiState _ui = LiveRecitationUiState.setup;
@@ -79,6 +81,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   int _surah = 1;
   int _ayah = 1;
   int _page = 1;
+  bool _loadingPage = true;
+  int _loadGeneration = 0;
   int _ayahCount = 7;
 
   /// For the Surah scope: the exact ayah range the user wants to recite.
@@ -157,7 +161,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// viewport as words wrap.
   final ScrollController _scrollController = ScrollController();
 
-
   /// The post-recitation review (reach-limited statuses + score). Rendered on
   /// the same Mushaf page, never as a separate tile screen.
   RecitationReview? _review;
@@ -167,23 +170,28 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// diagnostic Text rebuilds, not the whole reveal view).
   final ValueNotifier<int> _micChunksNotifier = ValueNotifier(0);
   final ValueNotifier<int> _sentBytesNotifier = ValueNotifier(0);
+
   /// Native recorder error captured from the recorder's state channel (e.g.
   /// "PCM reader failed to initialize"). Surfaced live so a swallowed setup
   /// failure is visible immediately, not just on the error screen.
   final ValueNotifier<String?> _micErrorNotifier = ValueNotifier(null);
+
   /// Android audio-focus grant result (from `audio_session`). `false` ⇒ the OS
   /// denied focus ⇒ the recorder is silently dead ⇒ "mic chunks: 0".
   final ValueNotifier<bool?> _focusNotifier = ValueNotifier(null);
+
   /// How many native audio frames actually reached the Dart `onData` callback.
   /// Surfaced live so we can tell "native posted frames but Dart never got them"
   /// (EventChannel delivery break) from "Dart got them but processing failed".
   final ValueNotifier<int> _audioOnDataNotifier = ValueNotifier(0);
+
   /// True once we've been "listening" for a couple seconds but the recorder has
   /// produced zero chunks — i.e. the OS is blocking mic capture. Surfaces a
   /// live warning so the user doesn't have to wait until "Stop" to find out.
   final ValueNotifier<bool> _noAudioNotifier = ValueNotifier(false);
   DateTime? _listenStartedAt;
   Timer? _diagTimer;
+
   /// Guards `_stop()` so repeated taps on "Stop & Review" (the old 10-click
   /// workaround) only trigger one finalize.
   bool _stopping = false;
@@ -194,20 +202,9 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.surahNumber != null) {
-      _scope = RecitationScope.surah;
-      _surah = widget.surahNumber!;
-      _ayah = widget.ayahNumber ?? 1;
-    }
-    _tajweedOn = LocalStorageService().getTajweedColorsEnabledSync();
-    if (widget.initialMode != null) {
-      _mode = widget.initialMode!;
-    } else {
-      RecitationMode.load().then((m) {
-        if (mounted) setState(() => _mode = m);
-      });
-    }
-    _loadScope();
+    _loadAppearancePreferences();
+    _mode = widget.initialMode ?? RecitationMode.hifz;
+    _loadInitialPage();
     _mushafController.load();
 
     _eventSub = _service.events.listen(_onEvent);
@@ -230,6 +227,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     _service.dispose();
     _audioService.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAppearancePreferences() async {
+    final enabled = await LocalStorageService().getTajweedColorsEnabled();
+    if (mounted) setState(() => _tajweedOn = enabled);
   }
 
   /// Resets every verdict on the page WITHOUT removing the text: all words go
@@ -308,14 +310,27 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   // ─── Data loading ─────────────────────────────────────────────────────────
 
+  final LocalCorpusRepository _corpus = LocalCorpusRepository();
+
+  Future<void> _loadInitialPage() async {
+    if (widget.surahNumber != null) {
+      final ayahs = await _corpus.getAyahs(widget.surahNumber!);
+      final chosen =
+          ayahs.where((a) => a.ayahNumber == (widget.ayahNumber ?? 1));
+      if (chosen.isNotEmpty) _page = chosen.first.pageNumber ?? 1;
+    }
+    if (mounted) await _loadScope();
+  }
+
   /// Loads the target block from the bundled corpus and records where each ayah
   /// ends (for inline markers). For the Surah scope this honours the selected
   /// [_ayahFrom] .. [_ayahTo] range. The live canvas stays blank until reciting.
   Future<void> _loadScope() async {
+    final generation = ++_loadGeneration;
     try {
       List<AyahModel> allAyahs;
       if (_scope == RecitationScope.page) {
-        allAyahs = await LocalCorpusRepository().getAyahsByPage(_page);
+        allAyahs = await _corpus.getAyahsByPage(_page);
       } else {
         allAyahs = await LocalCorpusRepository().getAyahs(_surah);
       }
@@ -324,8 +339,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       // For the surah scope, restrict to the chosen ayah range.
       final ayahs = _scope == RecitationScope.surah
           ? allAyahs
-              .where((a) =>
-                  a.ayahNumber >= _ayahFrom && a.ayahNumber <= _ayahTo)
+              .where(
+                  (a) => a.ayahNumber >= _ayahFrom && a.ayahNumber <= _ayahTo)
               .toList()
           : allAyahs;
 
@@ -370,8 +385,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         }
       }
 
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
+          _loadingPage = false;
+          _surah = ayahs.first.surahNumber;
+          _ayah = ayahs.first.ayahNumber;
+          _ayahFrom = _ayah;
+          _ayahTo = ayahs.last.ayahNumber;
           _words = words;
           _wordTajweedSpans = tajweed;
           _ayahRefs = refs;
@@ -379,7 +399,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           _ayahLabels = labels;
           _ayahMeta = meta;
           _surahStarts = starts;
-          _ayahCount = allAyahs.length;
+          _ayahCount = ayahs.last.ayahNumber;
         });
         // Pre-render the whole target immediately so the screen shows the full
         // Mushaf text from word one — never a blank canvas awaiting the mic.
@@ -387,6 +407,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       }
     } catch (e) {
       debugPrint('LiveRecitation: could not load scope: $e');
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _loadingPage = false;
+          _ui = LiveRecitationUiState.error;
+          _errorMessage = 'Could not load this Quran page. Please try again.';
+        });
+      }
     }
   }
 
@@ -403,10 +430,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         //
         // NEVER render `event.expected` for display: that field is the ASR-facing
         // key, and using it would strip the diacritics off the page.
-        final serverWords =
-            event.words.isNotEmpty && event.words.length == _revealedWords.length
-                ? event.words.map((w) => w.text).toList()
-                : null;
+        final serverWords = event.words.isNotEmpty &&
+                event.words.length == _revealedWords.length
+            ? event.words.map((w) => w.text).toList()
+            : null;
         // Re-prime (rather than only resetting verdicts) so a reconnect starts
         // from a clean, fully neutral page instead of inheriting the previous
         // session's colours. Prime FIRST, then adopt the server text, so the
@@ -429,9 +456,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         final text = (event.expected ?? event.spoken ?? '').trim();
         // Capture the word's tajweed spans (aligned by reference index) so the
         // live canvas can colour each letter by its rule.
-        final spans = (idx != null && idx >= 0 && idx < _wordTajweedSpans.length)
-            ? _wordTajweedSpans[idx]
-            : null;
+        final spans =
+            (idx != null && idx >= 0 && idx < _wordTajweedSpans.length)
+                ? _wordTajweedSpans[idx]
+                : null;
         _applyVerdict(text, idx, event.status, spans);
         break;
       case RecitationStreamEventType.finalResult:
@@ -503,6 +531,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   // ─── Session control ──────────────────────────────────────────────────────
 
   Future<void> _start() async {
+    if (!_canChangePage) return;
     await Haptics.vibrate(HapticsType.medium);
     _listenStartedAt = DateTime.now();
     _noAudioNotifier.value = false;
@@ -525,7 +554,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         // reference store is empty (prevents "0 of 0 words correct").
         words: _words,
         // Reveal-as-you-speak is the ONLY behaviour on this screen.
-        memorizationMode: false,
+        memorizationMode: _mode == RecitationMode.hifz,
       );
     } on MicPermissionDeniedException {
       setState(() {
@@ -615,9 +644,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       // app holding the mic). Surface it verbatim so the user isn't left
       // guessing between "permission" and "network".
       final nativeErr = _service.micError;
-      final nativeDetail = nativeErr != null
-          ? ' Recorder error: $nativeErr'
-          : '';
+      final nativeDetail =
+          nativeErr != null ? ' Recorder error: $nativeErr' : '';
       // Distinguish "the recorder produced no audio" (capture blocked by the
       // OS despite the app permission being granted) from "audio was captured
       // but never reached the server" (a transport / dropped-connection issue)
@@ -835,7 +863,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(10),
-                onTap: () => _openQuickJump(mushaf),
+                onTap: _canChangePage ? () => _openQuickJump(mushaf) : null,
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -868,6 +896,11 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                           color: mushaf.text.withValues(alpha: 0.6),
                         ),
                       ),
+                      Text(_mode.label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: mushaf.accent,
+                            fontWeight: FontWeight.w600,
+                          )),
                     ],
                   ),
                 ),
@@ -886,7 +919,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           IconButton(
             icon: const Icon(Icons.palette_outlined),
             tooltip: 'Mushaf appearance',
-            onPressed: () => MushafThemeController.showSheet(context),
+            onPressed: () => _showAppearance(mushaf),
           ),
           IconButton(
             icon: const Icon(Icons.history_rounded),
@@ -903,7 +936,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     );
   }
 
-
   Widget _buildBody(ThemeData theme, MushafTheme mushaf) {
     switch (_ui) {
       case LiveRecitationUiState.setup:
@@ -911,7 +943,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       case LiveRecitationUiState.live:
         return _buildLive(theme, mushaf);
       case LiveRecitationUiState.finalizing:
-        return _buildFinalizing(theme);
+        return _buildFinalizing(theme, mushaf);
       case LiveRecitationUiState.results:
         return _buildReviewPage(theme, mushaf);
       case LiveRecitationUiState.error:
@@ -921,19 +953,20 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   // ─── Mushaf page (shared by setup, live and review) ─────────────────────
 
-  /// Bottom clearance inside the scroll view so the floating recitation bar
-  /// never covers Quranic text: the last line can always scroll above it.
-  static const double _floatingBarClearance = 140;
-
-  /// Arabic size calibrated to the page width, so a short surah (Al-Fatiha's
-  /// 7 ayahs) sits on one phone screen inside the frame instead of spilling
-  /// past it. ~360dp wide phone → ~25.7.
-  static double _mushafFontSize(double width) =>
-      (width / 14).clamp(20.0, 28.0).toDouble();
-
   /// A surah's opening, drawn inline where its ayah 1 begins: the title plate,
   /// then the Bismillah. Al-Fatiha's Bismillah IS ayah 1 (drawing it again
   /// would duplicate it) and At-Tawbah (9) has none.
+  static const _surahBannerHeight = 40.0;
+  static const _bismillahFontSize = 18.0;
+  static const _bismillahLineHeight = 1.5;
+
+  double _surahOpeningHeight(int surah) =>
+      10 +
+      _surahBannerHeight +
+      (surah == 1 || surah == 9
+          ? 8
+          : 6 + _bismillahFontSize * _bismillahLineHeight);
+
   Widget _surahOpening(MushafTheme mushaf, int surah) {
     return Padding(
       padding: const EdgeInsets.only(top: 6, bottom: 4),
@@ -944,10 +977,16 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             theme: mushaf,
             name: surahNameEnglish(surah) ?? 'Surah $surah',
             nameArabic: surahNameArabic(surah),
+            height: _surahBannerHeight,
+            showEnglishName: false,
           ),
           if (surah != 1 && surah != 9) ...[
             const SizedBox(height: 6),
-            MushafBismillah(theme: mushaf),
+            MushafBismillah(
+              theme: mushaf,
+              fontSize: _bismillahFontSize,
+              lineHeight: _bismillahLineHeight,
+            ),
           ] else
             const SizedBox(height: 8),
         ],
@@ -957,8 +996,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// The Mushaf page: framed paper with inline surah openings and the word
   /// flow, all inside ONE bounded scroll view. The frame grows with its
-  /// text and scrolls as a whole, so text can never overflow past the border,
-  /// and [_floatingBarClearance] keeps the last line clear of the mic bar.
+  /// text and scrolls as a whole at large accessibility text sizes. The mic
+  /// bar has its own space below the page and cannot cover the last line.
   ///
   /// The SAME page is used before, during and after recitation — only the word
   /// states change — so tapping the mic never swaps or re-floods the text.
@@ -972,49 +1011,62 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fontSize = _mushafFontSize(constraints.maxWidth);
+        final paperHeight = math.max(0.0, constraints.maxHeight - 8);
+        final textHeight = math.max(0.0, paperHeight - 34.8);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           // Tap anywhere on the page: hide / show the top and bottom chrome.
           onTap: () => setState(() => _chromeVisible = !_chromeVisible),
           child: SingleChildScrollView(
             controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(
-                12, 4, 12, _floatingBarClearance),
-            child: MushafPageFrame(
-              theme: mushaf,
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
-              child: _words.isEmpty || _revealedWords.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Text(
-                        'Loading…',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: mushaf.text.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    )
-                  : MushafRevealView(
-                      words: _revealedWords,
-                      statuses: statuses,
-                      mushaf: mushaf,
-                      cursor: cursor,
-                      tajweedSpans: _revealedTajweedSpans,
-                      tajweedEnabled: _tajweedOn,
-                      ayahBoundaries: _ayahBoundaries,
-                      ayahLabels: _ayahLabels,
-                      fontSize: fontSize,
-                      caretKey: _caretKeyFallback,
-                      cursorKey: reviewMode ? null : _cursorKey,
-                      reviewMode: reviewMode,
-                      onMistakeTap: onMistakeTap,
-                      hideUnspoken: _mode == RecitationMode.hifz,
-                      blocksBefore: {
-                        for (final e in _surahStarts.entries)
-                          e.key: _surahOpening(mushaf, e.value),
-                      },
-                    ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: paperHeight,
+                  maxWidth: 620,
+                ),
+                child: MushafPageFrame(
+                  theme: mushaf,
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+                  child:
+                      _loadingPage || _words.isEmpty || _revealedWords.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 40),
+                              child: Text(
+                                'Loading…',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: mushaf.text.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            )
+                          : MushafRevealView(
+                              words: _revealedWords,
+                              statuses: statuses,
+                              mushaf: mushaf,
+                              cursor: cursor,
+                              tajweedSpans: _revealedTajweedSpans,
+                              tajweedEnabled: _tajweedOn,
+                              ayahBoundaries: _ayahBoundaries,
+                              ayahLabels: _ayahLabels,
+                              minimumHeight: textHeight,
+                              blockHeights: {
+                                for (final e in _surahStarts.entries)
+                                  e.key: _surahOpeningHeight(e.value),
+                              },
+                              caretKey: _caretKeyFallback,
+                              cursorKey: reviewMode ? null : _cursorKey,
+                              reviewMode: reviewMode,
+                              onMistakeTap: onMistakeTap,
+                              hideUnspoken: _mode == RecitationMode.hifz,
+                              blocksBefore: {
+                                for (final e in _surahStarts.entries)
+                                  e.key: _surahOpening(mushaf, e.value),
+                              },
+                            ),
+                ),
+              ),
             ),
           ),
         );
@@ -1024,86 +1076,107 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   // ─── Setup ──────────────────────────────────────────────────────────────
   Widget _buildSetup(ThemeData theme, MushafTheme mushaf) {
-    // The target is shown as the real Mushaf page in the current mode
-    // (Tilawat: full text; Hifz: hidden); the mic bar floats over the page's
-    // bottom clearance.
-    return Stack(
+    return Column(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Tajweed toggle (live per-letter tajweed colouring). Part of the
-            // chrome, so it hides with the bars on a page tap.
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              alignment: Alignment.topCenter,
-              child: _chromeVisible
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: _TajweedToggle(
-                        value: _tajweedOn,
-                        onChanged: (v) {
-                          setState(() => _tajweedOn = v);
-                          LocalStorageService.getInstance().then(
-                            (ls) => ls.setTajweedColorsEnabled(v),
-                          );
-                        },
-                        theme: theme,
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity, height: 0),
-            ),
-            Expanded(
-              child: _buildMushafPage(
-                theme,
-                mushaf,
-                statuses: _revealedStatuses,
-                cursor: -1,
-              ),
-            ),
-          ],
+        Expanded(
+          child: _buildMushafPage(
+            theme,
+            mushaf,
+            statuses: _revealedStatuses,
+            cursor: -1,
+          ),
         ),
         _floating(FloatingRecitationBar(
           theme: mushaf,
           listening: false,
           micLabel: 'Start reciting',
-          onMicTap: _start,
+          onMicTap: _loadingPage ? () {} : _start,
           onJumpTap: () => _openQuickJump(mushaf),
-          mode: _mode,
-          onModeToggle: _toggleMode,
+          onPreviousPage:
+              _canChangePage && _page > 1 ? () => _changePage(_page - 1) : null,
+          onNextPage: _canChangePage && _page < 604
+              ? () => _changePage(_page + 1)
+              : null,
+          pageLabel: '$_page / 604',
         )),
       ],
     );
   }
 
-  /// Quick-jump from the floating bar: opens a themed sheet to choose a surah
-  /// and ayah range, then re-targets the session and reloads the scope.
+  bool get _canChangePage =>
+      !_loadingPage && _ui == LiveRecitationUiState.setup;
+
+  Future<void> _changePage(int page) async {
+    if (!_canChangePage || page < 1 || page > 604) return;
+    setState(() {
+      _scope = RecitationScope.page;
+      _page = page;
+      _loadingPage = true;
+      _clearReveal();
+    });
+    _scrollToTop();
+    await _loadScope();
+  }
+
+  /// Jump to the complete Quran page containing the selected verse.
   Future<void> _openQuickJump(MushafTheme mushaf) async {
+    if (!_canChangePage) return;
+    final ayahs = await _corpus.getAyahs(_surah);
+    if (!mounted || !_canChangePage) return;
     final target = await MushafJumpSheet.show(
       context,
       theme: mushaf,
       initialSurah: _surah,
-      initialAyahFrom: _ayahFrom,
-      initialAyahTo: _ayahTo,
-      initialAyahCount: _ayahCount,
+      initialAyahFrom: _ayah,
+      initialAyahTo: _ayah,
+      initialAyahCount: ayahs.length,
+      pageMode: true,
     );
-    if (target == null || !mounted) return;
-    setState(() {
-      // An explicit verse choice implies surah scope, whatever was selected
-      // before — a page range can span several surahs and cannot honour it.
-      _scope = RecitationScope.surah;
-      _surah = target.surah;
-      _ayah = target.ayahFrom;
-      _ayahFrom = target.ayahFrom;
-      _ayahTo = target.ayahTo;
-      _ayahCount = _ayahTo;
-      // Reveal from the top of the new target rather than keeping the old
-      // revealed run, which no longer matches the reference.
-      _clearReveal();
-      _scrollToTop();
-    });
-    _loadScope();
+    if (target == null || !mounted || !_canChangePage) return;
+    final chosenSurah = await _corpus.getAyahs(target.surah);
+    if (!mounted || !_canChangePage) return;
+    final chosen = chosenSurah.where((a) => a.ayahNumber == target.ayahFrom);
+    if (chosen.isNotEmpty) await _changePage(chosen.first.pageNumber ?? 1);
+  }
+
+  Future<void> _showAppearance(MushafTheme mushaf) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: mushaf.background,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, updateSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _TajweedToggle(
+                value: _tajweedOn,
+                theme: Theme.of(sheetContext),
+                onChanged: (value) {
+                  setState(() => _tajweedOn = value);
+                  updateSheet(() {});
+                  LocalStorageService.getInstance().then(
+                    (storage) => storage.setTajweedColorsEnabled(value),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: const Text('Page theme'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  MushafThemeController.showSheet(context,
+                      controller: _mushafController);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _scrollToTop() {
@@ -1120,39 +1193,21 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     return _ayahMeta.last;
   }
 
-  void _toggleMode() {
-    Haptics.vibrate(HapticsType.selection);
-    setState(() => _mode = _mode.toggled);
-    _mode.save();
-  }
-
-  /// Hides the floating bar with the rest of the chrome on a page tap.
+  /// Controls occupy their own space below the paper and never cover a line.
   Widget _floating(Widget bar) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: IgnorePointer(
-        ignoring: !_chromeVisible,
-        child: AnimatedSlide(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          offset: _chromeVisible ? Offset.zero : const Offset(0, 1.2),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 180),
-            opacity: _chromeVisible ? 1 : 0,
-            child: bar,
-          ),
-        ),
-      ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      alignment: Alignment.bottomCenter,
+      child: _chromeVisible ? bar : const SizedBox(width: double.infinity),
     );
   }
 
   // ─── Live ───────────────────────────────────────────────────────────────
   Widget _buildLive(ThemeData theme, MushafTheme mushaf) {
-    return Stack(
+    return Column(
       children: [
-        Column(
+        Expanded(
+            child: Column(
           children: [
             // Status bar (self-managed LIVE timer) so the page never setStates
             // on a 1s tick (which would rebuild the reveal view).
@@ -1172,8 +1227,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                         color: theme.colorScheme.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color:
-                              theme.colorScheme.error.withValues(alpha: 0.4),
+                          color: theme.colorScheme.error.withValues(alpha: 0.4),
                         ),
                       ),
                       child: Row(
@@ -1204,7 +1258,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                   : const SizedBox.shrink(),
             ),
 
-            _buildDiagnostics(theme),
+            if (kDebugMode) _buildDiagnostics(theme),
 
             // The continuous Mushaf page. Unspoken words are ghost ink; each
             // confirmed word turns solid in place. A tap toggles the app bar +
@@ -1218,9 +1272,9 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
               ),
             ),
           ],
-        ),
+        )),
 
-        // The floating bar sits OVER the page's bottom clearance, so it never
+        // Controls sit below the page's bottom clearance, so it never
         // hides text. It slides away with the app bar on a page tap.
         _floating(FloatingRecitationBar(
           theme: mushaf,
@@ -1230,8 +1284,6 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           onJumpTap: () => _openQuickJump(mushaf),
           onStop: _cancel,
           stopLabel: 'Cancel',
-          mode: _mode,
-          onModeToggle: _toggleMode,
         )),
       ],
     );
@@ -1296,9 +1348,10 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// and unpenalised, and a tap on a red word opens the comparison sheet.
   Widget _buildReviewPage(ThemeData theme, MushafTheme mushaf) {
     final review = _review!;
-    return Stack(
+    return Column(
       children: [
-        Column(
+        Expanded(
+            child: Column(
           children: [
             _ReviewSummary(review: review, mushaf: mushaf, theme: theme),
             Expanded(
@@ -1312,7 +1365,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
               ),
             ),
           ],
-        ),
+        )),
         _floating(_ReviewActions(
           mushaf: mushaf,
           onRetry: _reset,
@@ -1323,32 +1376,18 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }
 
   // ─── Error ──────────────────────────────────────────────────────────────
-  Widget _buildFinalizing(ThemeData theme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 24),
-            Text(
-              'Finalizing your recitation…',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(color: theme.colorScheme.onSurface),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Analysing your full recitation. This can take a few seconds.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+  Widget _buildFinalizing(ThemeData theme, MushafTheme mushaf) {
+    return Column(children: [
+      const LinearProgressIndicator(),
+      Padding(
+        padding: const EdgeInsets.all(10),
+        child: Text('Reviewing your recitation…',
+            style: theme.textTheme.bodySmall),
       ),
-    );
+      Expanded(
+          child: _buildMushafPage(theme, mushaf,
+              statuses: _revealedStatuses, cursor: _liveCursor)),
+    ]);
   }
 
   Widget _buildError(ThemeData theme) {
@@ -1359,11 +1398,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline_rounded,
-                size: 64, color: theme.colorScheme.error.withValues(alpha: 0.6)),
+                size: 64,
+                color: theme.colorScheme.error.withValues(alpha: 0.6)),
             const SizedBox(height: 20),
             Text(
               'Something went wrong',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -1378,7 +1419,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             const SizedBox(height: 28),
             FilledButton(
               onPressed: _reset,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52)),
               child: const Text('Try Again'),
             ),
           ],
@@ -1423,7 +1465,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text('Choose a surah',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
                   _NumberDropdown(
                     label: 'Surah',
@@ -1446,7 +1489,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                       });
                       _loadScope();
                     },
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52)),
                     child: const Text('Set'),
                   ),
                 ],
@@ -1501,7 +1545,8 @@ class _ReviewSummary extends StatelessWidget {
     final muted = mushaf.text.withValues(alpha: 0.6);
     final String detail;
     if (evaluated == 0) {
-      detail = 'No words were recognised. Move closer to the mic and try again.';
+      detail =
+          'No words were recognised. Move closer to the mic and try again.';
     } else {
       final parts = <String>[
         '${review.correctCount} correct',
@@ -1685,6 +1730,7 @@ class _LiveStatusBadgeState extends State<_LiveStatusBadge> {
     );
   }
 }
+
 class _NumberDropdown extends StatelessWidget {
   final String label;
   final int value;
@@ -1745,10 +1791,13 @@ class _TajweedToggle extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: value ? color.withValues(alpha: 0.08) : theme.colorScheme.surface,
+          color:
+              value ? color.withValues(alpha: 0.08) : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: value ? color.withValues(alpha: 0.4) : theme.colorScheme.outline.withValues(alpha: 0.2),
+            color: value
+                ? color.withValues(alpha: 0.4)
+                : theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -1760,7 +1809,8 @@ class _TajweedToggle extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Tajweed colours',
-                      style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
                   Text(
                     'Colour each letter by its tajweed rule as it appears',
                     style: theme.textTheme.labelSmall?.copyWith(

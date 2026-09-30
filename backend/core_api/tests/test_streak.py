@@ -138,7 +138,7 @@ class TestStreakReset:
 
 
 class TestStreakFreeze:
-    """Test freeze credit usage for 1-day gaps."""
+    """Test freeze usage after this month's credit has already been granted."""
 
     @pytest.mark.asyncio
     async def test_freeze_used_on_1_day_gap(self, make_user, mock_db):
@@ -148,6 +148,7 @@ class TestStreakFreeze:
             longest_streak=5,
             last_streak_date=date(2025, 6, 13),
             freeze_credits=1,
+            last_freeze_grant_date=date(2025, 6, 1),
         )
         today = date(2025, 6, 15)  # 2-day gap
 
@@ -165,6 +166,7 @@ class TestStreakFreeze:
             longest_streak=5,
             last_streak_date=date(2025, 6, 13),
             freeze_credits=0,
+            last_freeze_grant_date=date(2025, 6, 1),
         )
         today = date(2025, 6, 15)
 
@@ -181,6 +183,7 @@ class TestStreakFreeze:
             longest_streak=5,
             last_streak_date=date(2025, 6, 12),
             freeze_credits=2,
+            last_freeze_grant_date=date(2025, 6, 1),
         )
         today = date(2025, 6, 15)  # 3-day gap
 

@@ -6,16 +6,17 @@ minutes (or stall completely when outbound model downloads are unavailable),
 while the mobile client gives up polling after two minutes.
 
 This worker keeps the same Redis job/result contract but uses the local
-CTranslate2 INT8 model already deployed for live recitation. It also forces the
-network-free RMS VAD path and uses the pipeline's estimated timestamps instead
-of loading the prototype forced-alignment model.
+CTranslate2 INT8 verification model already deployed for live recitation. It
+uses a network-free RMS speech gate and retains the independent recognizer's
+word timestamps without loading the prototype forced-alignment model.
 
 Production scoring is intentionally conservative:
 * only rows backed by an expected Quran reference word are returned;
 * ASR-only insertions/hallucinations never increase the displayed word count;
 * the overall score is the reference-word match ratio, not the research
   pipeline's provisional tajweed-weighted score;
-* tajweed is reported as unavailable while word timing is estimated.
+* pronunciation, fluency and tajweed are explicitly unavailable: text matching
+  and recognizer confidence do not measure these acoustic properties.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -33,7 +35,6 @@ from app.workers.inference_worker import (
     InferenceWorker,
     _build_reference_audio_url,
     _build_result_dict,
-    _describe_errors,
     _ensure_reference,
     _get_reference_store,
     _load_audio,
@@ -52,10 +53,9 @@ WORD_CONFIDENCE_THRESHOLD = float(
     os.environ.get("QARI_BATCH_WORD_CONFIDENCE_THRESHOLD", "0.50")
 )
 
-# Keep the existing 0..1 wire contract safe for older APKs. The feedback text
-# explicitly says tajweed is unavailable until the mobile model gains a
-# dedicated nullable/availability field.
-TAJWEED_UNAVAILABLE_SCORE = 0.0
+# Numeric placeholders preserve the legacy 0..1 wire contract. Availability
+# fields distinguish an unsupported metric from an evaluated zero score.
+UNAVAILABLE_SCORE = 0.0
 
 
 class FasterWhisperASRAdapter:
@@ -64,20 +64,13 @@ class FasterWhisperASRAdapter:
     def __init__(self) -> None:
         from ml.inference.faster_whisper_transcriber import get_transcriber
         self._transcriber = get_transcriber()
-        # ORACLE prompt (expected ayah text) is set per-job via
-        # ``set_prompt`` before each batch analysis — the V50 model is
-        # prompt-conditioned and free-runs into repetition loops without it.
-        self.current_prompt: str = ""
-
-    def set_prompt(self, prompt: str) -> None:
-        self.current_prompt = prompt or ""
 
     def transcribe(self, audio, sample_rate: int = 16000):
         from ml.inference.asr import ASRResult, ASRToken, normalize_arabic
 
         started = time.perf_counter()
-        words, confidences, starts, ends = self._transcriber.transcribe_with_timings(
-            audio, sample_rate, self.current_prompt
+        words, confidences, starts, ends = self._transcriber.transcribe_independent_with_timings(
+            audio, sample_rate
         )
 
         tokens: list[ASRToken] = []
@@ -87,7 +80,7 @@ class FasterWhisperASRAdapter:
             normalized = normalize_arabic(raw_word)
             if not normalized:
                 continue
-            confidence = float(confidences[index]) if index < len(confidences) else 1.0
+            confidence = float(confidences[index]) if index < len(confidences) else 0.0
             start_ms = starts[index] if index < len(starts) else 0
             end_ms = ends[index] if index < len(ends) else start_ms
             for normalized_word in normalized.split():
@@ -108,14 +101,90 @@ class FasterWhisperASRAdapter:
             normalized_text=" ".join(normalized_words),
             tokens=tokens,
             language="ar",
-            model_id=self._transcriber.model_dir,
+            model_id=self._transcriber.verify_model_dir,
             processing_time_s=time.perf_counter() - started,
         )
 
 
-class EstimatedTimestampsOnly:
-    def align(self, *_args, **_kwargs):
-        raise RuntimeError("Forced alignment disabled in fast production worker")
+@dataclass
+class BatchWordMatch:
+    reference: Optional[str]
+    hypothesis: Optional[str]
+    verdict: str
+    confidence: float
+    start_ms: Optional[int]
+    end_ms: Optional[int]
+    reference_audio_url: Optional[str]
+
+
+@dataclass
+class BatchWordMatchResult:
+    words: list[BatchWordMatch]
+    reference_audio_url: str
+
+
+class BatchWordMatchingPipeline:
+    """Compare independently heard words with a reference after decoding.
+
+    No expected text enters ASR. No acoustic checks or confidence values are
+    derived from uniformly estimated reference-word timestamps.
+    """
+
+    def __init__(self, reference_store, asr) -> None:
+        from ml.alignment.word_alignment import WordAligner
+
+        self.reference_store = reference_store
+        self.asr = asr
+        self._word_aligner = WordAligner()
+
+    def analyze(
+        self, audio, sample_rate, surah, ayahs, session_id, *, user_audio_url=""
+    ) -> BatchWordMatchResult:
+        expected_words = []
+        word_reference_urls = []
+        for ayah in ayahs:
+            reference = self.reference_store.get(surah, ayah)
+            if reference is None:
+                raise ValueError(f"No reference data for surah {surah}, ayah {ayah}")
+            ayah_words = reference.expected_words
+            expected_words.extend(ayah_words)
+            reference_url = (
+                reference.reference_audio_url or _build_reference_audio_url(surah, ayah)
+            )
+            word_reference_urls.extend([reference_url] * len(ayah_words))
+
+        # Align the entire ordered range once. One hypothesis token can then
+        # support only one reference position, including across repeated ayahs.
+        transcription = self.asr.transcribe(audio, sample_rate)
+        alignment = self._word_aligner.align(
+            expected_words,
+            transcription.normalized_words,
+            confidences=[token.confidence for token in transcription.tokens],
+        )
+        words = []
+        for aligned in alignment.aligned_words:
+            token = (
+                transcription.tokens[aligned.hyp_index]
+                if aligned.hyp_index is not None
+                else None
+            )
+            words.append(BatchWordMatch(
+                reference=aligned.reference,
+                hypothesis=aligned.hypothesis,
+                verdict=aligned.verdict.value,
+                confidence=token.confidence if token is not None else 0.0,
+                start_ms=round(token.start_time * 1000) if token is not None else None,
+                end_ms=round(token.end_time * 1000) if token is not None else None,
+                reference_audio_url=(
+                    word_reference_urls[aligned.ref_index]
+                    if aligned.ref_index is not None
+                    else None
+                ),
+            ))
+        return BatchWordMatchResult(
+            words=words,
+            reference_audio_url=word_reference_urls[0] if word_reference_urls else "",
+        )
 
 
 _pipeline = None
@@ -124,24 +193,19 @@ _pipeline = None
 def _get_fast_pipeline():
     global _pipeline
     if _pipeline is None:
-        from ml.inference.vad import VoiceActivityDetector
-        from ml.pipeline import RecitationPipeline
-
         store = _get_reference_store()
         if store is None:
             raise RuntimeError("Reference store unavailable — cannot run inference")
 
-        _pipeline = RecitationPipeline(
+        _pipeline = BatchWordMatchingPipeline(
             reference_store=store,
             asr=FasterWhisperASRAdapter(),
-            vad=VoiceActivityDetector(use_silero=False),
-            forced_aligner=EstimatedTimestampsOnly(),
         )
         logger.info(
             "fast_worker.pipeline_ready",
-            model_dir=os.environ.get("QARI_FASTERWHISPER_MODEL_DIR"),
-            vad="rms",
-            forced_alignment="estimated",
+            model_dir=_pipeline.asr._transcriber.verify_model_dir,
+            speech_gate="rms",
+            word_timestamps="independent_asr",
         )
     return _pipeline
 
@@ -197,7 +261,7 @@ def _reference_only_verdicts(
         confidences.append(confidence)
         is_uncertain = (
             word_result.verdict == "low_confidence"
-            or confidence < WORD_CONFIDENCE_THRESHOLD
+            or (word_result.hypothesis is not None and confidence < WORD_CONFIDENCE_THRESHOLD)
         )
         is_correct = word_result.verdict == "correct" and not is_uncertain
         if is_correct:
@@ -214,7 +278,11 @@ def _reference_only_verdicts(
             )
         else:
             error_type = word_result.verdict
-            error_description = _describe_errors(word_result.tajweed_issues)
+            error_description = (
+                "The independent recognizer did not hear this expected word."
+                if word_result.hypothesis is None
+                else "The independently recognized word differs from the reference."
+            )
 
         verdicts.append(
             {
@@ -224,9 +292,13 @@ def _reference_only_verdicts(
                 "confidence": confidence,
                 "expected_text": expected,
                 "actual_text": word_result.hypothesis,
+                "start_ms": getattr(word_result, "start_ms", None),
+                "end_ms": getattr(word_result, "end_ms", None),
                 "error_type": error_type,
                 "error_description": error_description,
-                "reference_audio_url": reference_audio_url,
+                "reference_audio_url": (
+                    getattr(word_result, "reference_audio_url", None) or reference_audio_url
+                ),
                 "user_audio_url": user_audio_url,
                 "phoneme_errors": [],
             }
@@ -265,7 +337,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
             ayah=ayah_from,
             overall=0.0,
             pronunciation=0.0,
-            tajweed=TAJWEED_UNAVAILABLE_SCORE,
+            tajweed=UNAVAILABLE_SCORE,
             fluency=0.0,
             accuracy=0.0,
             word_verdicts=[],
@@ -279,8 +351,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
 
     pipeline = _get_fast_pipeline()
     word_verdicts: list[dict] = []
-    global_index = 0
-    evaluated_ayahs = 0
+    available_ayahs: list[int] = []
     correct_reference_words = 0
     reference_word_count = 0
     result_confidences: list[float] = []
@@ -296,18 +367,9 @@ async def run_fast_ml_inference(job: dict) -> dict:
                 ayah=ayah,
             )
             continue
+        available_ayahs.append(ayah)
 
-        # ORACLE prompt for the prompt-conditioned V50 model: the expected
-        # ayah text (tashkeel) the decoder should hear. Set per-ayah BEFORE
-        # analysis; without it the free-running decoder loops repetitions.
-        _ref_store = _get_reference_store()
-        _ref = _ref_store.get(surah, ayah) if _ref_store is not None else None
-        pipeline.asr.set_prompt(
-            (getattr(_ref, "text", "") or getattr(_ref, "normalized_text", "") or "")
-            if _ref is not None
-            else ""
-        )
-
+    if available_ayahs:
         try:
             ml_result = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -315,7 +377,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
                     audio,
                     sample_rate,
                     surah,
-                    ayah,
+                    available_ayahs,
                     session_id,
                     user_audio_url=user_audio_url or "",
                 ),
@@ -323,32 +385,27 @@ async def run_fast_ml_inference(job: dict) -> dict:
             )
         except asyncio.TimeoutError as exc:
             raise TimeoutError(
-                f"Analysis exceeded {BATCH_ANALYSIS_TIMEOUT_SEC}s for {surah}:{ayah}"
+                f"Analysis exceeded {BATCH_ANALYSIS_TIMEOUT_SEC}s "
+                f"for {surah}:{ayah_from}-{ayah_to}"
             ) from exc
 
-        evaluated_ayahs += 1
-        ignored_insertions += sum(1 for row in ml_result.words if not row.reference)
-        ayah_reference_url = (
+        ignored_insertions = sum(1 for row in ml_result.words if not row.reference)
+        reference_audio_url = (
             ml_result.reference_audio_url
-            or _build_reference_audio_url(surah, ayah)
+            or _build_reference_audio_url(surah, available_ayahs[0])
         )
-        if reference_audio_url is None:
-            reference_audio_url = ayah_reference_url
 
-        ayah_verdicts, global_index, ayah_correct, ayah_confidences = (
+        word_verdicts, _, correct_reference_words, result_confidences = (
             _reference_only_verdicts(
                 ml_result.words,
-                start_index=global_index,
-                reference_audio_url=ayah_reference_url,
+                start_index=0,
+                reference_audio_url=reference_audio_url,
                 user_audio_url=user_audio_url,
             )
         )
-        word_verdicts.extend(ayah_verdicts)
-        correct_reference_words += ayah_correct
-        reference_word_count += len(ayah_verdicts)
-        result_confidences.extend(ayah_confidences)
+        reference_word_count = len(word_verdicts)
 
-    if evaluated_ayahs == 0 or reference_word_count == 0:
+    if not available_ayahs or reference_word_count == 0:
         return _build_result_dict(
             job=job,
             session_id=session_id,
@@ -356,7 +413,7 @@ async def run_fast_ml_inference(job: dict) -> dict:
             ayah=ayah_from,
             overall=0.0,
             pronunciation=0.0,
-            tajweed=TAJWEED_UNAVAILABLE_SCORE,
+            tajweed=UNAVAILABLE_SCORE,
             fluency=0.0,
             accuracy=0.0,
             word_verdicts=[],
@@ -407,9 +464,9 @@ async def run_fast_ml_inference(job: dict) -> dict:
         surah=surah,
         ayah=ayah_from,
         overall=word_match_score,
-        pronunciation=word_match_score,
-        tajweed=TAJWEED_UNAVAILABLE_SCORE,
-        fluency=average_confidence,
+        pronunciation=UNAVAILABLE_SCORE,
+        tajweed=UNAVAILABLE_SCORE,
+        fluency=UNAVAILABLE_SCORE,
         accuracy=word_match_score,
         word_verdicts=word_verdicts,
         reference_audio_url=reference_audio_url,

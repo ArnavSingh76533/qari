@@ -53,8 +53,8 @@ class MushafTheme {
     required this.ornament,
   });
 
-  bool get isDark => ThemeData.estimateBrightnessForColor(background) ==
-      Brightness.dark;
+  bool get isDark =>
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
 
   /// Faint "ghost ink" for a word the reciter has NOT said yet.
   ///
@@ -76,7 +76,8 @@ class MushafTheme {
       onError: Colors.white,
       surface: background,
       onSurface: text,
-      surfaceContainerHighest: Color.alphaBlend(accent.withValues(alpha: 0.06), background),
+      surfaceContainerHighest:
+          Color.alphaBlend(accent.withValues(alpha: 0.06), background),
       outline: border,
     );
     return ThemeData(
@@ -96,8 +97,10 @@ class MushafTheme {
         surfaceTintColor: Colors.transparent,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isDark ? const Color(0xFF2A2622) : const Color(0xFF2C221E),
-        contentTextStyle: TextStyle(color: isDark ? const Color(0xFFEDE7DE) : Colors.white),
+        backgroundColor:
+            isDark ? const Color(0xFF2A2622) : const Color(0xFF2C221E),
+        contentTextStyle:
+            TextStyle(color: isDark ? const Color(0xFFEDE7DE) : Colors.white),
       ),
     );
   }
@@ -165,7 +168,12 @@ class MushafTheme {
     ornament: Color(0xFF9A9A9A),
   );
 
-  static const List<MushafTheme> all = <MushafTheme>[classic, night, parchment, minimal];
+  static const List<MushafTheme> all = <MushafTheme>[
+    classic,
+    night,
+    parchment,
+    minimal
+  ];
 
   static MushafTheme byId(String? id) =>
       all.firstWhere((t) => t.id == id, orElse: () => classic);
@@ -211,15 +219,22 @@ class MushafThemeController extends ChangeNotifier {
   }
 
   /// The bottom sheet listing the four presets.
-  static Future<void> showSheet(BuildContext context) {
-    final controller = MushafThemeScope.of(context);
+  static Future<void> showSheet(
+    BuildContext context, {
+    MushafThemeController? controller,
+  }) {
+    final pageController = controller ?? MushafThemeScope.of(context);
     return showModalBottomSheet<void>(
       context: context,
-      backgroundColor: controller.theme.background,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: pageController.theme.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (ctx) => _MushafThemeSheet(controller: controller),
+      builder: (ctx) => SingleChildScrollView(
+        child: _MushafThemeSheet(controller: pageController),
+      ),
     );
   }
 }
@@ -280,7 +295,8 @@ class _MushafThemeSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'اختر مظهر المصحف',
-              style: TextStyle(color: t.text.withValues(alpha: 0.55), fontSize: 13),
+              style: TextStyle(
+                  color: t.text.withValues(alpha: 0.55), fontSize: 13),
             ),
             const SizedBox(height: 14),
             for (final option in MushafTheme.all)
@@ -323,7 +339,9 @@ class _ThemeOptionTile extends StatelessWidget {
             color: option.text.withValues(alpha: selected ? 0.07 : 0.03),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected ? option.accent : option.text.withValues(alpha: 0.12),
+              color: selected
+                  ? option.accent
+                  : option.text.withValues(alpha: 0.12),
               width: selected ? 2 : 1,
             ),
           ),
@@ -373,7 +391,8 @@ class _ThemeOptionTile extends StatelessWidget {
                 ),
               ),
               if (selected)
-                Icon(Icons.check_circle_rounded, color: option.accent, size: 22),
+                Icon(Icons.check_circle_rounded,
+                    color: option.accent, size: 22),
             ],
           ),
         ),

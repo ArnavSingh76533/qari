@@ -41,6 +41,8 @@ class WordVerdictOut(BaseModel):
     confidence: float = 1.0
     expected_text: Optional[str] = None
     actual_text: Optional[str] = None
+    start_ms: Optional[int] = None
+    end_ms: Optional[int] = None
     error_type: Optional[str] = None
     error_description: Optional[str] = None
     reference_audio_url: Optional[str] = None
@@ -62,6 +64,11 @@ class RecitationAnalysisResult(BaseModel):
     tajweed_score: float = 0.0
     fluency_score: float = 0.0
     accuracy_score: float = 0.0
+    # Missing flags mean the metric was not established as available. Legacy
+    # numeric placeholders alone must never be interpreted as measurements.
+    pronunciation_available: bool = False
+    tajweed_available: bool = False
+    fluency_available: bool = False
     word_verdicts: list[WordVerdictOut] = []
     reference_audio_url: Optional[str] = None
     user_audio_url: Optional[str] = None

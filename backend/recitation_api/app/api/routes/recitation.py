@@ -6,11 +6,12 @@ import uuid
 import wave
 from typing import Optional
 
-from fastapi import APIRouter, Form, File, UploadFile, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Request
 from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.security import get_current_user_id
 from app.schemas.recitation import (
     RecitationUploadResponse,
     RecitationPollResponse,
@@ -33,11 +34,13 @@ def _get_redis() -> redis.Redis:
 
 @router.post("/debug_echo")
 @router.post("/tarteel_debug_echo")  # legacy path — older APKs in the field
-async def debug_echo(request: Request) -> dict:
+async def debug_echo(request: Request, user_id: str = Depends(get_current_user_id)) -> dict:
     """DEV-ONLY: logs whatever the app POSTs here (e.g. native crash stacks) so
     it can be inspected from the server logs without pulling logs off the
     phone. Harmless no-op; returns 200.
     """
+    if settings.is_production:
+        raise HTTPException(status_code=404, detail="Not Found")
     try:
         body = await request.body()
         ctype = request.headers.get("content-type", "")
@@ -136,6 +139,7 @@ async def upload_recitation(
     ayah_to: Optional[int] = Form(None, ge=1),
     qari_id: Optional[int] = Form(None),
     audio: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
 ):
     # Normalise the ayah range: the Flutter client sends a single `ayah_number`,
     # while the REST contract also supports an explicit `ayah_from`..`ayah_to`.
@@ -155,7 +159,15 @@ async def upload_recitation(
             },
         )
     if ayah_to < ayah_from:
-        ayah_to = ayah_from
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "type": "about:blank",
+                "title": "Invalid Request",
+                "status": 422,
+                "detail": "'ayah_to' must be greater than or equal to 'ayah_from'",
+            },
+        )
     """Upload a recitation audio file for AI evaluation.
 
     Accepts mono 16kHz WAV files. Returns 202 with a session_id.
@@ -234,6 +246,7 @@ async def upload_recitation(
     r = _get_redis()
     session_meta = {
         "session_id": session_id,
+        "user_id": user_id,
         "surah_number": str(surah_number),
         "ayah_from": str(ayah_from),
         "ayah_to": str(ayah_to),
@@ -284,13 +297,15 @@ async def upload_recitation(
 
 
 @router.get("/{session_id}/audio")
-async def get_recitation_audio(session_id: str):
+async def get_recitation_audio(session_id: uuid.UUID, user_id: str = Depends(get_current_user_id)):
     """Stream back the user's uploaded audio for A/B comparison playback.
 
     The mobile app cannot open the server-local filesystem path stored in the
     job, so the worker publishes this absolute URL (built from
     ``recitation_api_public_url``) in ``user_audio_url``.
     """
+    session_id = str(session_id)
+    await _get_owned_session(session_id, user_id)
     file_path = os.path.join(settings.audio_storage_path, session_id, "audio.wav")
     if not os.path.isfile(file_path):
         raise HTTPException(
@@ -312,26 +327,15 @@ async def get_recitation_audio(session_id: str):
 
 
 @router.get("/{session_id}", response_model=RecitationPollResponse)
-async def get_recitation_result(session_id: str):
+async def get_recitation_result(session_id: uuid.UUID, user_id: str = Depends(get_current_user_id)):
     """Poll for recitation results by session_id.
 
     Returns ``{"status": ..., "result": <RecitationAnalysisResult>}`` — the exact
     shape the Flutter ``RecitationRepository.getRecitationResult`` parses.
     """
+    session_id = str(session_id)
     r = _get_redis()
-
-    # Get session metadata
-    session_data = await r.hgetall(f"qari:recitation:session:{session_id}")
-    if not session_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "type": "about:blank",
-                "title": "Not Found",
-                "status": 404,
-                "detail": f"Recitation session '{session_id}' not found",
-            },
-        )
+    session_data = await _get_owned_session(session_id, user_id)
 
     status_val = session_data.get("status", "queued")
 
@@ -350,6 +354,22 @@ async def get_recitation_result(session_id: str):
         result=result,
         error_message=session_data.get("error_message"),
     )
+
+
+async def _get_owned_session(session_id: str, user_id: str) -> dict:
+    session_data = await _get_redis().hgetall(f"qari:recitation:session:{session_id}")
+    if not session_data or session_data.get("user_id") != user_id:
+        # The same response hides both another user's and pre-auth legacy jobs.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "type": "about:blank",
+                "title": "Not Found",
+                "status": 404,
+                "detail": f"Recitation session '{session_id}' not found",
+            },
+        )
+    return session_data
 
 
 @router.get("/ayahs/{surah_number}/{ayah_number}/words", tags=["recitation"])
@@ -413,6 +433,7 @@ _IDENTIFY_MAX_SECONDS = 25
 async def identify_verse(
     audio: UploadFile = File(...),
     top_k: int = Form(5),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Identify which Quranic verse (surah:ayah) a recited clip corresponds to.
 

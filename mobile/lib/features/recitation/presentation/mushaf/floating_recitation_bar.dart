@@ -26,6 +26,9 @@ class FloatingRecitationBar extends StatefulWidget {
     this.micLabel = 'Start reciting',
     this.mode,
     this.onModeToggle,
+    this.onPreviousPage,
+    this.onNextPage,
+    this.pageLabel,
   });
 
   final MushafTheme theme;
@@ -42,6 +45,9 @@ class FloatingRecitationBar extends StatefulWidget {
   /// Current reading mode, shown on the toggle pill.
   final RecitationMode? mode;
   final VoidCallback? onModeToggle;
+  final VoidCallback? onPreviousPage;
+  final VoidCallback? onNextPage;
+  final String? pageLabel;
 
   @override
   State<FloatingRecitationBar> createState() => _FloatingRecitationBarState();
@@ -72,7 +78,7 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
     }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+      margin: const EdgeInsets.fromLTRB(6, 4, 6, 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         // Semi-transparent so the paper shows through — glassy, not a card.
@@ -102,6 +108,13 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
                   tooltip: 'Jump to ayah / page',
                   onTap: widget.onJumpTap,
                 ),
+                if (widget.pageLabel != null)
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    tooltip: 'Previous Quran page',
+                    color: t.text,
+                    onPressed: widget.onPreviousPage,
+                  ),
                 if (widget.mode != null && widget.onModeToggle != null) ...[
                   const SizedBox(width: 6),
                   _ModeToggle(
@@ -121,17 +134,37 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
             onTap: widget.onMicTap,
           ),
           Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: widget.onStop != null
-                  ? _CircleAction(
-                      theme: t,
-                      icon: Icons.stop_rounded,
-                      tooltip: widget.stopLabel,
-                      emphasise: true,
-                      onTap: widget.onStop!,
-                    )
-                  : const SizedBox(width: 44),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (widget.pageLabel != null) ...[
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(widget.pageLabel!,
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: t.text.withValues(alpha: .6),
+                            fontSize: 10,
+                          )),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    tooltip: 'Next Quran page',
+                    color: t.text,
+                    onPressed: widget.onNextPage,
+                  ),
+                ],
+                if (widget.onStop != null)
+                  _CircleAction(
+                    theme: t,
+                    icon: Icons.stop_rounded,
+                    tooltip: widget.stopLabel,
+                    emphasise: true,
+                    onTap: widget.onStop!,
+                  ),
+              ],
             ),
           ),
         ],

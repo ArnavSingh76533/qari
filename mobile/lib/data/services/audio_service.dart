@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_constants.dart';
 import 'local_storage_service.dart';
+import 'recitation_auth.dart';
 
 /// Audio service wrapping just_audio for Quran ayah playback.
 /// Supports speed control, reciter selection, and audio session management.
@@ -240,6 +241,20 @@ class AudioService {
       // self-signed host we download via an HttpClient that accepts the cert,
       // cache it to a temp file, and play from there — avoiding the TLS error.
       final uri = Uri.parse(url);
+      final headers =
+          recitationAudioHeaders(url, await _storage.getAuthToken());
+      if (headers.isNotEmpty) {
+        final file = await _downloadToTemp(url, headers: headers);
+        if (file == null)
+          throw StateError(
+              'Could not load your recording. Sign in and try again.');
+        await _player.setAudioSource(AudioSource.file(file.path));
+        await _player.setSpeed(_currentSpeed);
+        await _player.play();
+        _currentUrl = url;
+        _isSequential = false;
+        return;
+      }
       if (uri.scheme == 'https' &&
           uri.host == AppConstants.trustedSelfSignedHost) {
         final file = await _downloadToTemp(url);
@@ -266,12 +281,17 @@ class AudioService {
 
   /// Downloads [url] over an HttpClient that trusts the VPS self-signed cert,
   /// returning a temp file, or null on failure.
-  static Future<File?> _downloadToTemp(String url) async {
+  static Future<File?> _downloadToTemp(String url,
+      {Map<String, String> headers = const {}}) async {
     try {
       final client = HttpClient()
         ..badCertificateCallback =
             (cert, host, port) => host == AppConstants.trustedSelfSignedHost;
       final req = await client.getUrl(Uri.parse(url));
+      headers.forEach((key, value) => req.headers.set(key, value));
+      // Owned recordings are served directly. Do not forward a JWT through a
+      // redirect, even if a server accidentally returns a different origin.
+      if (headers.isNotEmpty) req.followRedirects = false;
       final resp = await req.close();
       if (resp.statusCode != 200) {
         client.close();

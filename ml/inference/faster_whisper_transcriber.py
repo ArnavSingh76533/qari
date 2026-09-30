@@ -183,6 +183,46 @@ class FasterWhisperTranscriber:
     def is_loaded(self) -> bool:
         return self._model is not None
 
+    def transcribe_independent_with_timings(
+        self, audio, sample_rate: int = 16000
+    ) -> Tuple[List[str], List[float], List[int], List[int]]:
+        """Return timestamped evidence from the independent, unprompted model.
+
+        Expected Quran text is deliberately not an argument. If verification
+        weights are unavailable the call raises; a prompt-conditioned model
+        cannot substitute for independent evidence.
+        """
+        samples = self._prepare_audio(audio, sample_rate)
+        if len(samples) == 0:
+            return [], [], [], []
+        segments, _info = self._model_verify_for().transcribe(
+            samples,
+            language="ar",
+            task="transcribe",
+            beam_size=1,
+            word_timestamps=True,
+            vad_filter=False,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            initial_prompt=None,
+            max_new_tokens=UNPROMPTED_MAX_NEW_TOKENS,
+        )
+        words: List[str] = []
+        confidences: List[float] = []
+        starts: List[int] = []
+        ends: List[int] = []
+        for segment in segments:
+            for word in getattr(segment, "words", None) or []:
+                text = (getattr(word, "word", None) or "").strip()
+                if not text:
+                    continue
+                words.append(text)
+                probability = getattr(word, "probability", None)
+                confidences.append(0.0 if probability is None else float(probability))
+                starts.append(int(float(getattr(word, "start", 0.0) or 0.0) * 1000))
+                ends.append(int(float(getattr(word, "end", 0.0) or 0.0) * 1000))
+        return words, confidences, starts, ends
+
     @staticmethod
     def _prepare_audio(audio, sample_rate: int):
         import numpy as np

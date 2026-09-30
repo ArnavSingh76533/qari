@@ -94,6 +94,14 @@ class MushafRevealView extends StatelessWidget {
   /// surah boundary opens the new surah inline, like a printed Mushaf.
   final Map<int, Widget> blocksBefore;
 
+  /// Available paper height. Short pages spread their lines over the sheet;
+  /// dense pages use a smaller font and remain scrollable at large text sizes.
+  final double minimumHeight;
+  final Map<int, double> blockHeights;
+
+  static final Map<(String, String, double, double, TextScaler), double>
+      _fontCache = {};
+
   const MushafRevealView({
     super.key,
     required this.words,
@@ -111,6 +119,8 @@ class MushafRevealView extends StatelessWidget {
     this.onMistakeTap,
     this.hideUnspoken = false,
     this.blocksBefore = const {},
+    this.minimumHeight = 0,
+    this.blockHeights = const {},
   });
 
   String? _labelForBoundary(int wordIndex) {
@@ -121,6 +131,80 @@ class MushafRevealView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final size = minimumHeight > 0
+          ? _pageFontSize(context, constraints.maxWidth)
+          : fontSize;
+      return _buildFlow(context, size);
+    });
+  }
+
+  // Measure the same isolated word glyphs used by the flow, rather than
+  // guessing from character counts. Quran text and verse order never change.
+  double _pageFontSize(BuildContext context, double width) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final cacheKey = (
+      [words.join('\u0000'), ayahBoundaries.join(','), ayahLabels.join(',')]
+          .join('\u0001'),
+      '${blocksBefore.keys.join(',')}|${blockHeights.entries.map((e) => '${e.key}:${e.value}').join(',')}',
+      width,
+      minimumHeight,
+      scaler
+    );
+    final cached = _fontCache[cacheKey];
+    if (cached != null) return cached;
+    double heightAt(double size) {
+      var usedWidth = 0.0;
+      var rowHeight = 0.0;
+      var totalHeight = 0.0;
+      void finishRow() {
+        if (rowHeight == 0) return;
+        totalHeight += rowHeight + 6;
+        usedWidth = rowHeight = 0;
+      }
+
+      void addText(String text) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: _arabicStyle(size, mushaf.text)),
+          textDirection: TextDirection.rtl,
+          textScaler: scaler,
+        )..layout();
+        final wordWidth = painter.width + 4;
+        if (usedWidth > 0 && usedWidth + 2 + wordWidth > width) finishRow();
+        usedWidth += (usedWidth > 0 ? 2 : 0) + wordWidth;
+        if (painter.height > rowHeight) rowHeight = painter.height;
+        painter.dispose();
+      }
+
+      for (var i = 0; i < words.length; i++) {
+        if (blocksBefore.containsKey(i)) {
+          finishRow();
+          totalHeight += (blockHeights[i] ?? 92) + 6;
+        }
+        addText(words[i]);
+        final label = _labelForBoundary(i);
+        if (label != null) addText(toArabicIndicDigits(label));
+      }
+      finishRow();
+      return totalHeight - 6;
+    }
+
+    var low = 13.0;
+    var high = 40.0;
+    for (var i = 0; i < 7; i++) {
+      final mid = (low + high) / 2;
+      if (heightAt(mid) <= minimumHeight) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    if (_fontCache.length >= 8) _fontCache.remove(_fontCache.keys.first);
+    _fontCache[cacheKey] = low;
+    return low;
+  }
+
+  Widget _buildFlow(BuildContext context, double size) {
     final theme = Theme.of(context);
 
     // A single RTL Wrap flowing right→left, wrapping line-by-line like a book.
@@ -157,18 +241,18 @@ class MushafRevealView extends StatelessWidget {
           i < viewStates.length ? viewStates[i] : LiveWordViewState.unspoken;
       final tap = onMistakeTap;
       Widget word = _RevealedWord(
-          key: isCursor ? cursorKey : null,
-          text: words[i],
-          viewState: viewState,
-          reviewMode: reviewMode,
-          hideUnspoken: hideUnspoken,
-          tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
-              ? tajweedSpans[i]
-              : null,
-          fontSize: fontSize,
-          theme: theme,
-          mushaf: mushaf,
-        );
+        key: isCursor ? cursorKey : null,
+        text: words[i],
+        viewState: viewState,
+        reviewMode: reviewMode,
+        hideUnspoken: hideUnspoken,
+        tajweedSpans: (tajweedEnabled && i < tajweedSpans.length)
+            ? tajweedSpans[i]
+            : null,
+        fontSize: size,
+        theme: theme,
+        mushaf: mushaf,
+      );
       if (tap != null && viewState == LiveWordViewState.mismatch) {
         word = GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -187,36 +271,44 @@ class MushafRevealView extends StatelessWidget {
           label: boundaryLabel,
           theme: theme,
           mushaf: mushaf,
-          fontSize: fontSize,
+          fontSize: size,
         ));
       }
     }
-    // Trailing anchor, used only when nothing is active yet (cursor is -1, i.e.
-    // before recitation starts) so the first layout has something measurable.
-    if (cursorKey == null || cursor < 0 || cursor >= words.length) {
-      children.add(
-        SizedBox(key: caretKey, width: 0, height: fontSize),
-      );
-    }
-
-    // Natural word spacing (WrapAlignment.start), NOT justified.
-    //
-    // Justified Mushaf typesetting stretches every line to the full measure.
-    // On a LIVE page the newest word lands on the final line, so justification
-    // would re-space that line on every single event — words visibly shuffle
-    // several times per second while reciting, which is both unreadable and a
-    // relayout of the whole page on each frame. Natural spacing keeps the
-    // reading position stable; a printed-page justification pass can be added
-    // later for the non-live reader if the visual gain is judged worth it.
+    // Every word is present from the first frame, so justification stays
+    // stable while verdicts recolour the existing glyphs.
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Wrap(
-        direction: Axis.horizontal,
-        alignment: WrapAlignment.start,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 2,
-        runSpacing: 6,
-        children: children,
+      child: Stack(
+        fit: StackFit.passthrough,
+        clipBehavior: Clip.none,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minimumHeight),
+            child: Wrap(
+              direction: Axis.horizontal,
+              alignment: minimumHeight > 0
+                  ? WrapAlignment.spaceBetween
+                  : WrapAlignment.start,
+              runAlignment: minimumHeight > 0
+                  ? WrapAlignment.spaceBetween
+                  : WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 2,
+              runSpacing: 6,
+              children: children,
+            ),
+          ),
+          // A positioned fallback measures the end of the sheet without
+          // adding another Wrap run or shifting words when listening starts.
+          if (caretKey != null &&
+              (cursorKey == null || cursor < 0 || cursor >= words.length))
+            Positioned(
+              bottom: 0,
+              left: 0,
+              child: SizedBox(key: caretKey, width: 0, height: 0),
+            ),
+        ],
       ),
     );
   }
@@ -256,7 +348,8 @@ class _RevealedWord extends StatelessWidget {
 
   /// Hifz mode hides every word not yet confirmed — the listening cursor too,
   /// or the halo would give the next word away.
-  bool get _isHidden => !reviewMode && hideUnspoken && (_isUnspoken || _isActive);
+  bool get _isHidden =>
+      !reviewMode && hideUnspoken && (_isUnspoken || _isActive);
 
   Color get _ink {
     // Red is reachable ONLY via [LiveWordViewState.mismatch], which
@@ -288,11 +381,9 @@ class _RevealedWord extends StatelessWidget {
     //   correct   -> solid ink + soft green background tint (live only; the
     //                review page keeps correct words plain)
     //   mismatch  -> red ink + a red underline
-    final isCorrect =
-        !reviewMode && viewState == LiveWordViewState.correct;
-    final Color? wash = _isActive
-        ? mushaf.activeTint
-        : (isCorrect ? mushaf.correctTint : null);
+    final isCorrect = !reviewMode && viewState == LiveWordViewState.correct;
+    final Color? wash =
+        _isActive ? mushaf.activeTint : (isCorrect ? mushaf.correctTint : null);
     // Only a genuine mistake gets a red underline. The active cursor gets a
     // halo instead of an underline so the listening word is unmistakable
     // without borrowing the visual language of an error.
@@ -301,11 +392,12 @@ class _RevealedWord extends StatelessWidget {
     final content = canColorTajweed
         ? Text.rich(
             _buildTajweedSpan(brightness),
+            style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
           )
         : Text(
             text,
-            style: AppTheme.arabicTextStyle(fontSize: fontSize, color: _ink),
+            style: _arabicStyle(fontSize, _ink),
             textAlign: TextAlign.right,
           );
 
@@ -330,6 +422,8 @@ class _RevealedWord extends StatelessWidget {
                 ),
               ]
             : null,
+      ),
+      foregroundDecoration: BoxDecoration(
         border: underline
             ? Border(
                 bottom: BorderSide(
@@ -366,12 +460,11 @@ class _RevealedWord extends StatelessWidget {
       while (j < text.length && ruleAt[j] == rule) j++;
       final color = rule == null
           ? null
-          : AppTheme.ensureContrast(
-              AppTheme.getTajweedColor(rule), brightness);
+          : AppTheme.ensureContrast(AppTheme.getTajweedColor(rule), brightness);
       children.add(
         TextSpan(
           text: text.substring(i, j),
-          style: AppTheme.arabicTextStyle(fontSize: fontSize, color: color),
+          style: _arabicStyle(fontSize, color),
         ),
       );
       i = j;
@@ -407,15 +500,16 @@ class _AyahMarker extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Text(
           toArabicIndicDigits(label),
-          style: AppTheme.arabicTextStyle(
-            fontSize: fontSize,
-            color: mushaf.accent,
-          ),
+          style: _arabicStyle(fontSize, mushaf.accent),
         ),
       ),
     );
   }
 }
+
+TextStyle _arabicStyle(double size, Color? color) =>
+    AppTheme.arabicTextStyle(fontSize: size, color: color)
+        .copyWith(fontSize: size, height: 1.65);
 
 /// "12" -> "١٢". Non-digits pass through unchanged.
 String toArabicIndicDigits(String western) {

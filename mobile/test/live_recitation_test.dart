@@ -43,7 +43,8 @@ void main() {
     });
 
     test('unknown status falls back to pending', () {
-      final e = RecitationStreamEvent.fromJson({'type': 'word', 'status': 'weird'});
+      final e =
+          RecitationStreamEvent.fromJson({'type': 'word', 'status': 'weird'});
       expect(e.status, LiveWordStatus.pending);
       expect(e.status.isResolved, isFalse);
     });
@@ -67,7 +68,7 @@ void main() {
     });
   });
 
-  testWidgets('LiveRecitationPage setup shows Tajweed toggle (no Mem Mode)',
+  testWidgets('AI setup keeps Hifz mode and puts appearance in its sheet',
       (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -79,12 +80,17 @@ void main() {
     // Tarteel-style chrome: surah name + Page | Juz | Hizb location.
     expect(find.text('Al-Fatihah'), findsWidgets);
     expect(find.text('Page 1 | Juz 1 | Hizb 1'), findsOneWidget);
-    // Tilawat / Hifz mode toggle lives on the floating bar.
-    expect(find.text('Tilawat'), findsOneWidget);
+    expect(find.text('Hifz'), findsOneWidget);
+    expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
+        findsNothing);
     // The old Memorization Mode toggle must be GONE.
     expect(find.text('Memorization Mode'), findsNothing);
-    // The new (Tarteel-style) Tajweed colours toggle is present.
+    expect(find.text('Tajweed colours'), findsNothing);
+    await tester.tap(find.byTooltip('Mushaf appearance'));
+    await tester.pumpAndSettle();
     expect(find.text('Tajweed colours'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Tajweed colours'))).pop();
+    await tester.pumpAndSettle();
 
     // Recitation starts from the floating bar's mic, not the old full-width
     // "Start Reciting" banner (removed in the Mushaf redesign).
@@ -97,8 +103,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-          of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
+      find.descendant(of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
       findsOneWidget,
     );
     expect(find.byIcon(Icons.palette_outlined), findsOneWidget);
@@ -153,7 +158,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MushafRevealView(words: const [], statuses: const [], mushaf: MushafTheme.classic),
+          body: MushafRevealView(
+              words: const [], statuses: const [], mushaf: MushafTheme.classic),
         ),
       ),
     );
