@@ -158,7 +158,9 @@ void main() {
           hideUnspoken: hide,
         ));
         expect(mushafWords(), _words);
-        return [for (var i = 0; i < _words.length; i++) mushafWordRect(tester, i)];
+        return [
+          for (var i = 0; i < _words.length; i++) mushafWordRect(tester, i)
+        ];
       }
 
       final tilawat = await layout(false, 0);
@@ -325,11 +327,19 @@ void main() {
   testWidgets('review only intercepts taps on mistakes', (tester) async {
     var pageTaps = 0;
     int? mistake;
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GestureDetector(
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: GestureDetector(
       onTap: () => pageTaps++,
-      child: MushafRevealView(words: _words,
-        statuses: [LiveWordStatus.error, ...List.filled(_words.length - 1, LiveWordStatus.matched)],
-        cursor: _words.length, reviewMode: true, mushaf: MushafTheme.classic,
+      child: MushafRevealView(
+        words: _words,
+        statuses: [
+          LiveWordStatus.error,
+          ...List.filled(_words.length - 1, LiveWordStatus.matched)
+        ],
+        cursor: _words.length,
+        reviewMode: true,
+        mushaf: MushafTheme.classic,
         onMistakeTap: (index) => mistake = index,
       ),
     ))));

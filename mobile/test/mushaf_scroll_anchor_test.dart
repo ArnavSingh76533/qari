@@ -7,8 +7,7 @@ import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view
 import 'helpers/mushaf_paragraph_helpers.dart';
 
 /// A long surah-ish block so the flow is taller than the viewport.
-List<String> bigWords(int n) =>
-    List.generate(n, (i) => 'وَٰلْعَصْرِ${i}');
+List<String> bigWords(int n) => List.generate(n, (i) => 'وَٰلْعَصْرِ${i}');
 
 Widget host({
   required List<String> words,
@@ -38,13 +37,15 @@ Widget host({
 }
 
 void main() {
-  testWidgets('scroll anchor sits on the CURSOR word, not the end', (tester) async {
+  testWidgets('scroll anchor sits on the CURSOR word, not the end',
+      (tester) async {
     final words = bigWords(60);
     final cursorKey = GlobalKey();
 
     // Cursor is on word 2 (near the top). The anchor must measure near the top
     // of the flow, NOT at the bottom of the 60-word document.
-    await tester.pumpWidget(host(words: words, cursor: 2, cursorKey: cursorKey));
+    await tester
+        .pumpWidget(host(words: words, cursor: 2, cursorKey: cursorKey));
     await tester.pumpAndSettle();
 
     final ctx = cursorKey.currentContext;
@@ -72,12 +73,14 @@ void main() {
       return box.localToGlobal(Offset.zero).dy;
     }
 
-    await tester.pumpWidget(host(words: words, cursor: 0, cursorKey: cursorKey));
+    await tester
+        .pumpWidget(host(words: words, cursor: 0, cursorKey: cursorKey));
     await tester.pumpAndSettle();
     final first = anchorDy();
     expect(first, closeTo(mushafWordRect(tester, 0).top, 0.5));
 
-    await tester.pumpWidget(host(words: words, cursor: 40, cursorKey: cursorKey));
+    await tester
+        .pumpWidget(host(words: words, cursor: 40, cursorKey: cursorKey));
     await tester.pumpAndSettle();
     final later = anchorDy();
     expect(later, closeTo(mushafWordRect(tester, 40).top, 0.5));
@@ -90,8 +93,8 @@ void main() {
     final words = bigWords(30);
     final caret = GlobalKey();
     // cursor == -1: nothing active, so the trailing fallback anchor is used.
-    await tester.pumpWidget(
-        host(words: words, cursor: -1, cursorKey: GlobalKey(), caretKey: caret));
+    await tester.pumpWidget(host(
+        words: words, cursor: -1, cursorKey: GlobalKey(), caretKey: caret));
     await tester.pumpAndSettle();
     expect(caret.currentContext, isNotNull,
         reason: 'idle page must still expose a measurable anchor');

@@ -163,15 +163,22 @@ void main() {
 
   testWidgets('a long surah keeps readable text and scrolls', (tester) async {
     final words = List.filled(500, 'ءَأَنذَرْتَهُمْ');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
-      child: MushafRevealView(words: words, statuses: const [],
-        mushaf: MushafTheme.classic, minimumHeight: 400),
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+      child: MushafRevealView(
+          words: words,
+          statuses: const [],
+          mushaf: MushafTheme.classic,
+          minimumHeight: 400),
     ))));
     await tester.pumpAndSettle();
-    final paragraph = tester.widget<MushafParagraph>(find.byType(MushafParagraph));
+    final paragraph =
+        tester.widget<MushafParagraph>(find.byType(MushafParagraph));
     expect(paragraph.text.style!.fontSize, greaterThanOrEqualTo(13));
     expect(mushafWords(), words);
-    expect(tester.getSize(find.byType(MushafParagraph)).height, greaterThan(400));
+    expect(
+        tester.getSize(find.byType(MushafParagraph)).height, greaterThan(400));
     expect(tester.takeException(), isNull);
   });
 
@@ -187,8 +194,10 @@ void main() {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
-        SharedPreferences.setMockInitialValues(
-            {'mushaf_theme_id': target.theme, 'tajweed_colors_enabled': target.page == 84});
+        SharedPreferences.setMockInitialValues({
+          'mushaf_theme_id': target.theme,
+          'tajweed_colors_enabled': target.page == 84
+        });
         final preview = GlobalKey();
         await tester.pumpWidget(RepaintBoundary(
           key: preview,
@@ -203,11 +212,12 @@ void main() {
         ));
         await tester.pumpAndSettle();
         if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
-          final boundary =
-              preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
+          final boundary = preview.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
           await tester.runAsync(() async {
             final image = await boundary.toImage(pixelRatio: 2);
-            final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+            final bytes =
+                await image.toByteData(format: ui.ImageByteFormat.png);
             final file = File(
                 'build/review/quran-page${target.page}-${size.width.toInt()}.png');
             await file.parent.create(recursive: true);
@@ -216,12 +226,14 @@ void main() {
           });
         }
         expect(find.textContaining('Page ${target.page} |'), findsOneWidget);
-        final view = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+        final view =
+            tester.widget<MushafRevealView>(find.byType(MushafRevealView));
         expect(mushafWords(), view.words);
         final frame = tester.getRect(find.byType(MushafPageFrame));
         final rows = mushafTextRows(tester);
         if (target.page == 3) {
-          expect(rows.length, 15, reason: 'Page 3 must retain fifteen text rows');
+          expect(rows.length, 15,
+              reason: 'Page 3 must retain fifteen text rows');
         }
         for (final rect in rows) {
           expect(rect.left, greaterThanOrEqualTo(frame.left));
@@ -239,22 +251,26 @@ void main() {
         final markerRects = <String, List<Rect>>{};
         for (final element in markerTexts.evaluate()) {
           final text = element.widget as Text;
-          if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!)) continue;
-          markerRects.putIfAbsent(text.data!, () => []).add(
-              tester.getRect(find.byWidget(text)));
+          if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!))
+            continue;
+          markerRects
+              .putIfAbsent(text.data!, () => [])
+              .add(tester.getRect(find.byWidget(text)));
         }
         final used = <String, int>{};
         for (var i = 0; i < view.ayahBoundaries.length; i++) {
           final label = toArabicIndicDigits(view.ayahLabels[i]);
           final occurrence = used[label] ?? 0;
           used[label] = occurrence + 1;
-          expect(markerRects[label], isNotNull, reason: 'missing marker $label');
+          expect(markerRects[label], isNotNull,
+              reason: 'missing marker $label');
           final marker = markerRects[label]![occurrence];
           final word = bodyRects[view.ayahBoundaries[i]];
           expect(marker.top, lessThan(word.bottom));
           expect(marker.bottom, greaterThan(word.top));
           expect(word.left - marker.right, inInclusiveRange(-0.5, 6.1),
-              reason: 'ayah $label marker must remain tightly after its final word');
+              reason:
+                  'ayah $label marker must remain tightly after its final word');
         }
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());

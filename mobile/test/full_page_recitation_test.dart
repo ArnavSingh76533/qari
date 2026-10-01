@@ -314,8 +314,8 @@ void main() {
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       final lastBottom = tester.getRect(marker).bottom;
       if (lastBottom > controls.top || position.maxScrollExtent > 2) {
-        final paragraph = tester.widget<MushafParagraph>(
-            find.byType(MushafParagraph).first);
+        final paragraph =
+            tester.widget<MushafParagraph>(find.byType(MushafParagraph).first);
         final font = (paragraph.text as TextSpan).style?.fontSize;
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');

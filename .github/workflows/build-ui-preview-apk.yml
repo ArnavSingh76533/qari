@@ -53,24 +53,25 @@ jobs:
         run: dart format lib/main_ui_preview.dart test/ui_preview_test.dart
       - name: Verify offline entry and Quran modes
         working-directory: mobile
-        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart test/mushaf_typography_test.dart
+        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart test/mushaf_typography_test.dart test/mushaf_justification_test.dart
       - name: Build ARM64 preview APK
         working-directory: mobile
         run: flutter build apk --release --target lib/main_ui_preview.dart --target-platform android-arm64 --build-name "$PREVIEW_VERSION" --build-number "$PREVIEW_CODE"
       - name: Verify Android package and signature
         run: |
           mkdir -p build-preview
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk build-preview/Qari-Quran-UI-Preview.apk
+          PREVIEW_APK="build-preview/Qari-Quran-UI-Preview-v${PREVIEW_CODE}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "$PREVIEW_APK"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS/aapt" dump badging build-preview/Qari-Quran-UI-Preview.apk | tee build-preview/package.txt
+          "$BUILD_TOOLS/aapt" dump badging "$PREVIEW_APK" | tee build-preview/package.txt
           grep -q "package: name='com.qari.app.uipreview'" build-preview/package.txt
           grep -q "native-code: 'arm64-v8a'" build-preview/package.txt
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs build-preview/Qari-Quran-UI-Preview.apk
-          sha256sum build-preview/Qari-Quran-UI-Preview.apk | tee build-preview/SHA256SUMS.txt
-          stat -c "APK size: %s bytes" build-preview/Qari-Quran-UI-Preview.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$PREVIEW_APK"
+          sha256sum "$PREVIEW_APK" | tee build-preview/SHA256SUMS.txt
+          stat -c "APK size: %s bytes" "$PREVIEW_APK"
       - uses: actions/upload-artifact@v4
         with:
-          name: qari-quran-ui-preview-arm64
+          name: qari-quran-ui-preview-arm64-v${{ env.PREVIEW_CODE }}
           path: build-preview/
           compression-level: 0
           if-no-files-found: error

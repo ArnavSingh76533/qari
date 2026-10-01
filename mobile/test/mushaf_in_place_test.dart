@@ -35,7 +35,8 @@ void main() {
   // Al-Fatiha 1:1 with the Uthmani text_with_tashkeel from the backend.
   const fatiha = ['بِسْمِ', 'ٱللَّهِ', 'ٱلرَّحْمَـٰنِ', 'ٱلرَّحِيمِ'];
 
-  testWidgets('REQ 1: full text is visible BEFORE any word event', (tester) async {
+  testWidgets('REQ 1: full text is visible BEFORE any word event',
+      (tester) async {
     await tester.pumpWidget(prime(
       words: fatiha,
       ayahBoundaries: const [3],
@@ -59,8 +60,18 @@ void main() {
     // Fatha, kasra, shaddah, dagger alif, sukun must all survive to the screen.
     // U+064E fatha, U+0650 kasra, U+0651 shaddah, U+0670 dagger alif,
     // U+0652 sukun, U+0653.. maddah.
-    const diacritics = [0x064B, 0x064C, 0x064D, 0x064E, 0x064F, 0x0650,
-      0x0651, 0x0652, 0x0653, 0x0670];
+    const diacritics = [
+      0x064B,
+      0x064C,
+      0x064D,
+      0x064E,
+      0x064F,
+      0x0650,
+      0x0651,
+      0x0652,
+      0x0653,
+      0x0670
+    ];
     var total = 0;
     for (final w in fatiha) {
       final rendered = mushafWordSpan(w).toPlainText();
@@ -99,8 +110,12 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 1,
-      statuses: const [LiveWordStatus.matched, LiveWordStatus.pending,
-        LiveWordStatus.pending, LiveWordStatus.pending],
+      statuses: const [
+        LiveWordStatus.matched,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending
+      ],
     ));
     await tester.pumpAndSettle();
 
@@ -128,8 +143,12 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 0,
-      statuses: const [LiveWordStatus.matched, LiveWordStatus.pending,
-        LiveWordStatus.pending, LiveWordStatus.pending],
+      statuses: const [
+        LiveWordStatus.matched,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending
+      ],
     ));
     expect(mushafWords(), contains('بِسْمِ'));
     expect(mushafWords(), isNot(contains('بسم')),
@@ -158,14 +177,14 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 0,
-      statuses: List<LiveWordStatus>.filled(
-          4, LiveWordStatus.error),
+      statuses: List<LiveWordStatus>.filled(4, LiveWordStatus.error),
     ));
     expect(mushafWords(), fatiha);
     for (final span in mushafWordSpans()) {
       expect(span.style?.color, MushafTheme.classic.text,
           reason: 'red appeared at or ahead of the cursor');
-      expect(span.style?.decoration?.contains(TextDecoration.underline) ?? false,
+      expect(
+          span.style?.decoration?.contains(TextDecoration.underline) ?? false,
           isFalse);
     }
   });

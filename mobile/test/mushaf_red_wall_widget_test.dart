@@ -87,7 +87,8 @@ void main() {
       _words.length,
       LiveWordStatus.error,
     );
-    await tester.pumpWidget(_host(words: _words, statuses: statuses, cursor: 0));
+    await tester
+        .pumpWidget(_host(words: _words, statuses: statuses, cursor: 0));
 
     expect(_redWords(tester, MushafTheme.classic), isEmpty,
         reason: 'with the cursor on word 0, no word may be red');
@@ -100,7 +101,8 @@ void main() {
       _words.length,
       LiveWordStatus.error,
     );
-    await tester.pumpWidget(_host(words: _words, statuses: statuses, cursor: 0));
+    await tester
+        .pumpWidget(_host(words: _words, statuses: statuses, cursor: 0));
 
     final red = _redWords(tester, MushafTheme.classic);
     expect(red, isEmpty,
@@ -111,10 +113,11 @@ void main() {
 
   testWidgets('a genuine mistake BEHIND the cursor is red', (tester) async {
     // Cursor = 4. Word 1 is a real, already-passed mistake.
-    final statuses = List<LiveWordStatus>.filled(_words.length,
-        LiveWordStatus.matched);
+    final statuses =
+        List<LiveWordStatus>.filled(_words.length, LiveWordStatus.matched);
     statuses[1] = LiveWordStatus.error;
-    await tester.pumpWidget(_host(words: _words, statuses: statuses, cursor: 4));
+    await tester
+        .pumpWidget(_host(words: _words, statuses: statuses, cursor: 4));
 
     expect(_redWords(tester, MushafTheme.classic), contains('لِلَّهِ'),
         reason: 'a real mistake behind the cursor must still be visible');
@@ -129,21 +132,23 @@ void main() {
         _words.length,
         LiveWordStatus.error,
       );
-      await tester.pumpWidget(
-          _host(words: _words, statuses: statuses, cursor: cursor));
+      await tester
+          .pumpWidget(_host(words: _words, statuses: statuses, cursor: cursor));
       _expectRedOnlyBehindCursor(tester, words: _words, cursor: cursor);
     }
   });
 
   testWidgets('the cursor word is highlighted, never red', (tester) async {
-    final statuses = List<LiveWordStatus>.filled(_words.length,
-        LiveWordStatus.error);
-    await tester.pumpWidget(_host(words: _words, statuses: statuses, cursor: 2));
+    final statuses =
+        List<LiveWordStatus>.filled(_words.length, LiveWordStatus.error);
+    await tester
+        .pumpWidget(_host(words: _words, statuses: statuses, cursor: 2));
     // Words 0,1 are behind -> red is legitimate. Word 2 is the CURSOR and must
     // not be red; nor may anything after it.
     expect(_redWords(tester, MushafTheme.classic), isNot(contains(_words[2])),
         reason: 'the active word is a highlight, not an error');
-    expect(_redWords(tester, MushafTheme.classic), isNot(contains(_words.last)));
+    expect(
+        _redWords(tester, MushafTheme.classic), isNot(contains(_words.last)));
     // The active word is highlighted without a mistake underline.
     final activeStyle = mushafWordSpans()[2].style!;
     expect(activeStyle.backgroundColor, MushafTheme.classic.activeTint);
@@ -201,7 +206,8 @@ void main() {
       });
     }
 
-    testWidgets('a correct word is tinted green, in light and dark', (tester) async {
+    testWidgets('a correct word is tinted green, in light and dark',
+        (tester) async {
       for (final t in [MushafTheme.classic, MushafTheme.night]) {
         await tester.pumpWidget(
           _host(

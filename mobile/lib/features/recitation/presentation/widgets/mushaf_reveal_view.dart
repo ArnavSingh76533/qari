@@ -157,7 +157,8 @@ class MushafRevealView extends StatelessWidget {
       for (final entry in content.markers.entries) {
         final (placeholderIndex, markerWidth) = entry.value;
         if (placeholderIndex < placeholderBoxes.length) {
-          markerOffsets[entry.key] = rects[entry.key].left - markerWidth -
+          markerOffsets[entry.key] = rects[entry.key].left -
+              markerWidth -
               placeholderBoxes[placeholderIndex].left;
         }
       }
@@ -241,9 +242,11 @@ class MushafRevealView extends StatelessWidget {
       // The final, zero-height placeholder creates a soft break after the
       // last real line. Exclude that placeholder line from the visible page.
       final count = lines.length > 1 ? lines.length - 1 : 1;
-      final flush = lines.take(count).every((line) => line.width >= width - 0.5);
+      final flush =
+          lines.take(count).every((line) => line.width >= width - 0.5);
       painter.dispose();
-      final visible = content.measure(width, TextScaler.noScaling, maxLines: count);
+      final visible =
+          content.measure(width, TextScaler.noScaling, maxLines: count);
       final bottom = visible.height;
       visible.dispose();
       return (bottom, count, flush);
@@ -350,8 +353,10 @@ class MushafRevealView extends StatelessWidget {
         // inline widget over that reservation. The marker cannot orphan and
         // the body words remain TextSpans in the same shaped paragraph.
         final reservation = '\u2060$digits\u200f';
-        children.add(TextSpan(text: reservation, semanticsLabel: '',
-          style: const TextStyle(color: Colors.transparent)));
+        children.add(TextSpan(
+            text: reservation,
+            semanticsLabel: '',
+            style: const TextStyle(color: Colors.transparent)));
         offset += reservation.length;
         final style = _arabicStyle(size, mushaf.accent, 1.65);
         final marker = TextPainter(
@@ -360,24 +365,31 @@ class MushafRevealView extends StatelessWidget {
         )..layout();
         final markerWidth = marker.width;
         final markerHeight = marker.height;
-        final baseline = marker.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+        final baseline =
+            marker.computeDistanceToActualBaseline(TextBaseline.alphabetic);
         marker.dispose();
         markers[i] = (dimensions.length, markerWidth);
         placeholder(
           Baseline(
-            baseline: baseline, baselineType: TextBaseline.alphabetic,
+            baseline: baseline,
+            baselineType: TextBaseline.alphabetic,
             child: Transform.translate(
-            offset: Offset(markerOffsets[i] ?? 0, 0),
-            child: OverflowBox(
-            alignment: Alignment.centerLeft,
-            minWidth: markerWidth, maxWidth: markerWidth,
-            minHeight: markerHeight, maxHeight: markerHeight,
-            child: Semantics(label: 'End of ayah $label', excludeSemantics: true,
-              child: Text(digits, style: style, softWrap: false)),
+              offset: Offset(markerOffsets[i] ?? 0, 0),
+              child: OverflowBox(
+                alignment: Alignment.centerLeft,
+                minWidth: markerWidth,
+                maxWidth: markerWidth,
+                minHeight: markerHeight,
+                maxHeight: markerHeight,
+                child: Semantics(
+                    label: 'End of ayah $label',
+                    excludeSemantics: true,
+                    child: Text(digits, style: style, softWrap: false)),
+              ),
+            ),
           ),
-          ),
-          ),
-          Size(0, markerHeight), baseline: baseline,
+          Size(0, markerHeight),
+          baseline: baseline,
         );
       }
     }
@@ -507,7 +519,8 @@ class _ParagraphContent {
   final List<TextRange> ranges;
   final List<TextSpan> words;
   final Map<int, (int, double)> markers;
-  const _ParagraphContent(this.span, this.dimensions, this.ranges, this.words, this.markers);
+  const _ParagraphContent(
+      this.span, this.dimensions, this.ranges, this.words, this.markers);
 
   TextPainter measure(double width, TextScaler scaler, {int? maxLines}) =>
       TextPainter(

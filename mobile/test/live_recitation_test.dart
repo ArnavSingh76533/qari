@@ -141,9 +141,10 @@ void main() {
     expect(mushafWords(), contains('الله'));
     final span = mushafWordSpan('الله');
     expect(span.children, isNotEmpty);
-    expect((span.children!.first as TextSpan).style?.color,
-        AppTheme.ensureContrast(AppTheme.getTajweedColor('ghunnah'), Brightness.light));
-
+    expect(
+        (span.children!.first as TextSpan).style?.color,
+        AppTheme.ensureContrast(
+            AppTheme.getTajweedColor('ghunnah'), Brightness.light));
   });
 
   testWidgets('MushafRevealView starts blank (no words, no dots)',
@@ -215,6 +216,7 @@ void main() {
     expect(mushafWords(), contains('بسم'));
     // The mispronounced word is still revealed (not hidden).
     expect(mushafWords(), contains('السلام'));
-    expect(mushafWordSpan('السلام').style?.color, MushafTheme.classic.mismatchInk);
+    expect(
+        mushafWordSpan('السلام').style?.color, MushafTheme.classic.mismatchInk);
   });
 }

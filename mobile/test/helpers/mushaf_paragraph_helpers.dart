@@ -112,16 +112,18 @@ List<Rect> mushafTextRows(WidgetTester tester) {
   }
   // Only visible glyph/marker bounds count. Selecting the whole paragraph
   // includes trailing soft-break whitespace boxes outside the painted row.
-  for (final element in find.descendant(of: find.byType(MushafParagraph),
-      matching: find.byType(Text)).evaluate()) {
+  for (final element in find
+      .descendant(of: find.byType(MushafParagraph), matching: find.byType(Text))
+      .evaluate()) {
     final text = element.widget as Text;
-    if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!)) continue;
+    if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!))
+      continue;
     final rect = tester.getRect(find.byWidget(text));
     var best = -1;
     var overlap = 0.0;
     for (var j = 0; j < rows.length; j++) {
       final intersection = rows[j].intersect(
-        Rect.fromLTRB(rows[j].left, rect.top, rows[j].right, rect.bottom));
+          Rect.fromLTRB(rows[j].left, rect.top, rows[j].right, rect.bottom));
       if (intersection.height > overlap) {
         overlap = intersection.height;
         best = j;
