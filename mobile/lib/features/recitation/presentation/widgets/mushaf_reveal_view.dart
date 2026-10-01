@@ -138,7 +138,7 @@ class MushafRevealView extends StatelessWidget {
       final width = constraints.maxWidth;
       final scaler = MediaQuery.textScalerOf(context);
       final layout = _fitPage(context, width, scaler);
-      final content = _compose(context, width, layout.$1, layout.$2);
+      var content = _compose(context, width, layout.$1, layout.$2);
       final painter =
           content.measure(width, TextScaler.noScaling, maxLines: layout.$3);
       final rects = <Rect>[];
@@ -152,7 +152,18 @@ class MushafRevealView extends StatelessWidget {
                 .map((b) => b.toRect())
                 .reduce((a, b) => a.expandToInclude(b)));
       }
+      final markerOffsets = <int, double>{};
+      final placeholderBoxes = painter.inlinePlaceholderBoxes ?? const [];
+      for (final entry in content.markers.entries) {
+        final (placeholderIndex, markerWidth) = entry.value;
+        if (placeholderIndex < placeholderBoxes.length) {
+          markerOffsets[entry.key] = rects[entry.key].left - markerWidth -
+              placeholderBoxes[placeholderIndex].left;
+        }
+      }
       painter.dispose();
+      content = _compose(context, width, layout.$1, layout.$2,
+          markerOffsets: markerOffsets);
       final paragraph = MushafParagraph(
         wordRanges: content.ranges,
         wordSpans: content.words,
@@ -223,18 +234,19 @@ class MushafRevealView extends StatelessWidget {
     final cached = _layoutCache[cacheKey];
     if (cached != null) return cached;
     const baseHeight = 1.65;
-    (double, int) measure(double size, double height) {
+    (double, int, bool) measure(double size, double height) {
       final content = _compose(context, width, size, height, decorate: false);
       final painter = content.measure(width, TextScaler.noScaling);
       final lines = painter.computeLineMetrics();
       // The final, zero-height placeholder creates a soft break after the
       // last real line. Exclude that placeholder line from the visible page.
       final count = lines.length > 1 ? lines.length - 1 : 1;
+      final flush = lines.take(count).every((line) => line.width >= width - 0.5);
       painter.dispose();
       final visible = content.measure(width, TextScaler.noScaling, maxLines: count);
       final bottom = visible.height;
       visible.dispose();
-      return (bottom, count);
+      return (bottom, count, flush);
     }
 
     var size = fontSize;
@@ -254,6 +266,11 @@ class MushafRevealView extends StatelessWidget {
         }
       }
       size = low;
+      // A one-word widow cannot be justified. Slightly reduce the glyph size
+      // until the preceding word joins it, including before surah openings.
+      for (var i = 0; i < 80 && !measure(size, baseHeight).$3; i++) {
+        size *= 0.99;
+      }
     }
     var leading = baseHeight;
     var result = measure(size, leading);
@@ -279,7 +296,7 @@ class MushafRevealView extends StatelessWidget {
 
   _ParagraphContent _compose(
       BuildContext context, double width, double size, double leading,
-      {bool decorate = true}) {
+      {bool decorate = true, Map<int, double> markerOffsets = const {}}) {
     // Scale glyphs once, then lay out widgets and text in the same dp space.
     // RichText otherwise automatically scales WidgetSpans a second time.
     size = MediaQuery.textScalerOf(context).scale(size);
@@ -287,6 +304,7 @@ class MushafRevealView extends StatelessWidget {
     final ranges = <TextRange>[];
     final wordSpans = <TextSpan>[];
     final dimensions = <PlaceholderDimensions>[];
+    final markers = <int, (int, double)>{};
     var offset = 0;
     void text(String value) {
       children.add(TextSpan(text: value));
@@ -342,13 +360,17 @@ class MushafRevealView extends StatelessWidget {
         final markerHeight = marker.height;
         final baseline = marker.computeDistanceToActualBaseline(TextBaseline.alphabetic);
         marker.dispose();
+        markers[i] = (dimensions.length, markerWidth);
         placeholder(
-          OverflowBox(
+          Transform.translate(
+            offset: Offset(markerOffsets[i] ?? 0, 0),
+            child: OverflowBox(
             alignment: Alignment.centerLeft,
             minWidth: markerWidth, maxWidth: markerWidth,
             minHeight: markerHeight, maxHeight: markerHeight,
             child: Semantics(label: 'End of ayah $label', excludeSemantics: true,
               child: Text(digits, style: style, softWrap: false)),
+          ),
           ),
           Size(0, markerHeight), baseline: baseline,
         );
@@ -366,6 +388,7 @@ class MushafRevealView extends StatelessWidget {
       dimensions,
       ranges,
       wordSpans,
+      markers,
     );
   }
 
@@ -478,7 +501,8 @@ class _ParagraphContent {
   final List<PlaceholderDimensions> dimensions;
   final List<TextRange> ranges;
   final List<TextSpan> words;
-  const _ParagraphContent(this.span, this.dimensions, this.ranges, this.words);
+  final Map<int, (int, double)> markers;
+  const _ParagraphContent(this.span, this.dimensions, this.ranges, this.words, this.markers);
 
   TextPainter measure(double width, TextScaler scaler, {int? maxLines}) =>
       TextPainter(
