@@ -84,7 +84,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/app-release.apk releases/app_release.json mobile/pubspec.yaml
+          # releases/ is git-ignored (a97663d); force-add the published files.
+          git add -f releases/app-release.apk releases/app_release.json mobile/pubspec.yaml
           if git diff --cached --quiet; then
             echo "Nothing to commit (APK unchanged)."
             exit 0
