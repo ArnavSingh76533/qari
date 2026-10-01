@@ -23,7 +23,7 @@ List<TextSpan> mushafWordSpans() {
       expect(range.isValid, isTrue);
       expect(range.isCollapsed, isFalse);
       expect(range.end, lessThanOrEqualTo(text.length));
-      expect(text.substring(range.start, range.end),
+      expect(text.substring(range.start, range.end).replaceAll("\u00a0", " "),
           paragraph.wordSpans[i].toPlainText(),
           reason: 'word $i must identify its actual paragraph text');
     }

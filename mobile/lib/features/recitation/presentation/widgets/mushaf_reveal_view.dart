@@ -399,14 +399,18 @@ class MushafRevealView extends StatelessWidget {
     final spans = tajweedEnabled && index < tajweedSpans.length
         ? tajweedSpans[index]
         : null;
-    final value = words[index];
+    final original = words[index];
+    // A corpus word can contain a pause sign after a space. Keep that space
+    // non-breaking and unexpanded, so the sign stays with its Arabic word.
+    // The semantic label retains the exact source text and ASR word identity.
+    final value = original.replaceAll(' ', '\u00a0');
     if (!decorate ||
         mistake ||
         hidden ||
         (reviewMode && unspoken) ||
         spans == null ||
         spans.isEmpty) {
-      return TextSpan(text: value, style: style);
+      return TextSpan(text: value, semanticsLabel: original, style: style);
     }
     final ruleAt = List<String?>.filled(value.length, null);
     for (final span in spans) {
@@ -415,6 +419,20 @@ class MushafRevealView extends StatelessWidget {
           i++) {
         ruleAt[i] = span.rule;
       }
+    }
+    // A colour boundary must not separate a base letter from its harakat.
+    // Such splits produce invalid shaped selection boxes in justified RTL
+    // text. Paint each grapheme using its applicable tajweed rule.
+    var clusterOffset = 0;
+    for (final cluster in value.characters) {
+      String? rule;
+      for (var i = clusterOffset; i < clusterOffset + cluster.length; i++) {
+        rule ??= ruleAt[i];
+      }
+      for (var i = clusterOffset; i < clusterOffset + cluster.length; i++) {
+        ruleAt[i] = rule;
+      }
+      clusterOffset += cluster.length;
     }
     final children = <TextSpan>[];
     var i = 0;
@@ -433,7 +451,7 @@ class MushafRevealView extends StatelessWidget {
                       Theme.of(context).brightness))));
       i = end;
     }
-    return TextSpan(style: style, children: children);
+    return TextSpan(semanticsLabel: original, style: style, children: children);
   }
 }
 
