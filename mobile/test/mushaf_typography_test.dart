@@ -161,6 +161,20 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a long surah keeps readable text and scrolls', (tester) async {
+    final words = List.filled(500, 'ءَأَنذَرْتَهُمْ');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: MushafRevealView(words: words, statuses: const [],
+        mushaf: MushafTheme.classic, minimumHeight: 400),
+    ))));
+    await tester.pumpAndSettle();
+    final paragraph = tester.widget<MushafParagraph>(find.byType(MushafParagraph));
+    expect(paragraph.text.style!.fontSize, greaterThanOrEqualTo(13));
+    expect(mushafWords(), words);
+    expect(tester.getSize(find.byType(MushafParagraph)).height, greaterThan(400));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final size in [const Size(360, 740), const Size(430, 932)]) {
     for (final target in [
       (page: 1, surah: 1, ayah: 1, theme: 'classic'),

@@ -251,7 +251,8 @@ class MushafRevealView extends StatelessWidget {
 
     var size = fontSize;
     if (minimumHeight > 0) {
-      var low = 1.0;
+      final minimumSize = lineEnds.isEmpty ? 13.0 : 1.0;
+      var low = minimumSize;
       var high = 40.0;
       final lineBudget =
           lineEnds.isEmpty ? null : lineEnds.length + blocksBefore.length;
@@ -269,6 +270,7 @@ class MushafRevealView extends StatelessWidget {
       // A one-word widow cannot be justified. Slightly reduce the glyph size
       // until the preceding word joins it, including before surah openings.
       for (var i = 0; i < 80 && !measure(size, baseHeight).$3; i++) {
+        if (size * 0.99 < minimumSize) break;
         size *= 0.99;
       }
     }
@@ -362,7 +364,9 @@ class MushafRevealView extends StatelessWidget {
         marker.dispose();
         markers[i] = (dimensions.length, markerWidth);
         placeholder(
-          Transform.translate(
+          Baseline(
+            baseline: baseline, baselineType: TextBaseline.alphabetic,
+            child: Transform.translate(
             offset: Offset(markerOffsets[i] ?? 0, 0),
             child: OverflowBox(
             alignment: Alignment.centerLeft,
@@ -370,6 +374,7 @@ class MushafRevealView extends StatelessWidget {
             minHeight: markerHeight, maxHeight: markerHeight,
             child: Semantics(label: 'End of ayah $label', excludeSemantics: true,
               child: Text(digits, style: style, softWrap: false)),
+          ),
           ),
           ),
           Size(0, markerHeight), baseline: baseline,
