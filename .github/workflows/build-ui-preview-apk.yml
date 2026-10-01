@@ -1,7 +1,10 @@
 name: Quran UI APK
+# Login-free preview of the Quran UI (Tilawat + AI recitation pages) for
+# checking the Mushaf rendering before the backend is hosted. Separate
+# application id, so it installs next to the real app.
 on:
   push:
-    branches: ["codex/qari-full-page-recitation"]
+    branches: ["main"]
     paths:
       - ".github/workflows/build-ui-preview-apk.yml"
       - "mobile/lib/main_ui_preview.dart"
@@ -29,7 +32,7 @@ jobs:
       - name: Prepare separate preview app
         run: |
           python3 - <<'PY'
-          import pathlib, re, json
+          import pathlib, re, json, os
           gradle = pathlib.Path("mobile/android/app/build.gradle.kts")
           text = gradle.read_text()
           old = 'applicationId = "com.qari.app"'
@@ -40,7 +43,7 @@ jobs:
           spec = pathlib.Path("mobile/pubspec.yaml").read_text()
           match = re.search(r"^version:\s*([\d.]+)\+(\d+)", spec, re.M)
           release = json.loads(pathlib.Path("releases/app_release.json").read_text())
-          code = max(int(match.group(2)), int(release["version_code"])) + 1
+          code = max(int(match.group(2)), int(release["version_code"])) + int(os.environ["GITHUB_RUN_NUMBER"])
           with pathlib.Path("build-preview.env").open("w") as output:
               output.write(f"PREVIEW_VERSION={match.group(1)}\nPREVIEW_CODE={code}\n")
           PY
@@ -53,24 +56,25 @@ jobs:
         run: dart format lib/main_ui_preview.dart test/ui_preview_test.dart
       - name: Verify offline entry and Quran modes
         working-directory: mobile
-        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart
+        run: flutter test test/ui_preview_test.dart test/full_page_recitation_test.dart test/mushaf_modes_test.dart
       - name: Build ARM64 preview APK
         working-directory: mobile
         run: flutter build apk --release --target lib/main_ui_preview.dart --target-platform android-arm64 --build-name "$PREVIEW_VERSION" --build-number "$PREVIEW_CODE"
       - name: Verify Android package and signature
         run: |
           mkdir -p build-preview
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk build-preview/Qari-Quran-UI-Preview.apk
+          PREVIEW_APK="build-preview/Qari-Quran-UI-Preview-v${PREVIEW_CODE}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "$PREVIEW_APK"
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS/aapt" dump badging build-preview/Qari-Quran-UI-Preview.apk | tee build-preview/package.txt
+          "$BUILD_TOOLS/aapt" dump badging "$PREVIEW_APK" | tee build-preview/package.txt
           grep -q "package: name='com.qari.app.uipreview'" build-preview/package.txt
           grep -q "native-code: 'arm64-v8a'" build-preview/package.txt
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs build-preview/Qari-Quran-UI-Preview.apk
-          sha256sum build-preview/Qari-Quran-UI-Preview.apk | tee build-preview/SHA256SUMS.txt
-          stat -c "APK size: %s bytes" build-preview/Qari-Quran-UI-Preview.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$PREVIEW_APK"
+          sha256sum "$PREVIEW_APK" | tee build-preview/SHA256SUMS.txt
+          stat -c "APK size: %s bytes" "$PREVIEW_APK"
       - uses: actions/upload-artifact@v4
         with:
-          name: qari-quran-ui-preview-arm64
+          name: qari-quran-ui-preview-arm64-v${{ env.PREVIEW_CODE }}
           path: build-preview/
           compression-level: 0
           if-no-files-found: error
