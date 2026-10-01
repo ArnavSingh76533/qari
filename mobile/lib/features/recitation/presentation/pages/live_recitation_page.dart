@@ -114,6 +114,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   /// 0-based index of the LAST word of each ayah in [_words] (for markers).
   List<int> _ayahBoundaries = const [];
   List<int> _lineEnds = const [];
+  List<int> _surahEnds = const [];
 
   /// Ayah-number labels aligned 1:1 with [_ayahBoundaries].
   List<String> _ayahLabels = const [];
@@ -357,6 +358,12 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       final tajweed = <List<TajweedSpan>?>[];
       final refs = <(int, int)>[];
       final boundaries = <int>[];
+      final surahEnds = <int>[];
+      final finalAyahs = <int, int>{};
+      for (final surah in ayahs.map((a) => a.surahNumber).toSet()) {
+        final completeSurah = await _corpus.getAyahs(surah);
+        if (completeSurah.isNotEmpty) finalAyahs[surah] = completeSurah.last.ayahNumber;
+      }
       final labels = <String>[];
       final meta = <_AyahMeta>[];
       final starts = <int, int>{};
@@ -384,6 +391,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         refs.add((a.surahNumber, a.ayahNumber));
         if (a.words.isNotEmpty) {
           boundaries.add(words.length - 1);
+          if (a.ayahNumber == finalAyahs[a.surahNumber]) surahEnds.add(words.length - 1);
           labels.add(a.ayahNumber.toString());
           meta.add(_AyahMeta(
             surah: a.surahNumber,
@@ -406,6 +414,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           _ayahRefs = refs;
           _ayahBoundaries = boundaries;
           _lineEnds = lineEnds;
+          _surahEnds = surahEnds;
           _ayahLabels = labels;
           _ayahMeta = meta;
           _surahStarts = starts;
@@ -1061,6 +1070,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               ayahBoundaries: _ayahBoundaries,
                               ayahLabels: _ayahLabels,
                               lineEnds: _lineEnds,
+                              surahEnds: _surahEnds,
                               minimumHeight: textHeight,
                               blockHeights: {
                                 for (final e in _surahStarts.entries)

@@ -17,10 +17,19 @@ import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view
 import 'helpers/mushaf_paragraph_helpers.dart';
 
 void expectRtlRows(WidgetTester tester, {required String reason}) {
-  final paragraph = tester.getRect(find.byType(MushafParagraph).first);
+  final paragraph = tester.getRect(find.byType(MushafRevealView));
   final rows = mushafTextRows(tester);
   expect(rows, isNotEmpty, reason: reason);
+  final view = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+  final lines = tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
+  expect(rows.length, lines.length, reason: '$reason: a fitted line must never wrap');
+  var end = -1;
   for (var i = 0; i < rows.length; i++) {
+    end += lines[i].wordSpans.length;
+    if (!view.surahEnds.contains(end)) {
+      expect(rows[i].left, closeTo(paragraph.left, 1),
+        reason: '$reason row ${i + 1}: fitted left margin must be flush');
+    }
     expect(rows[i].left, greaterThanOrEqualTo(paragraph.left - 0.5),
         reason: '$reason row ${i + 1}: text stays within the left margin');
     expect(rows[i].right, closeTo(paragraph.right, 1),
@@ -111,7 +120,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     final word = mushafWordRect(tester, words.length - 1);
-    final marker = tester.getRect(find.text('١'));
+    final marker = mushafRect(tester, find.text('١'));
     expect(word.top, greaterThan(mushafWordRect(tester, 0).top),
         reason: 'the fixture must exercise wrapping at the final word');
     expect(marker.top, lessThan(word.bottom),
@@ -150,7 +159,7 @@ void main() {
     expect(mushafWords(), words);
     final rects = mushafWordRects(tester);
     expect(rects.length, words.length);
-    final paragraph = tester.getRect(find.byType(MushafParagraph));
+    final paragraph = tester.getRect(find.byType(MushafRevealView));
     for (final rect in rects) {
       expect(rect.isEmpty, isFalse);
       expect(rect.left, greaterThanOrEqualTo(paragraph.left - 0.5));
@@ -175,11 +184,11 @@ void main() {
     ))));
     await tester.pumpAndSettle();
     final paragraph =
-        tester.widget<MushafParagraph>(find.byType(MushafParagraph));
+        tester.widget<MushafParagraph>(find.byType(MushafParagraph).first);
     expect(paragraph.text.style!.fontSize, greaterThanOrEqualTo(13));
     expect(mushafWords(), words);
     expect(
-        tester.getSize(find.byType(MushafParagraph)).height, greaterThan(400));
+        tester.getSize(find.byType(MushafRevealView)).height, greaterThan(400));
     expect(tester.takeException(), isNull);
   });
 
@@ -256,7 +265,7 @@ void main() {
             continue;
           markerRects
               .putIfAbsent(text.data!, () => [])
-              .add(tester.getRect(find.byWidget(text)));
+              .add(mushafRect(tester, find.byWidget(text)));
         }
         final used = <String, int>{};
         for (var i = 0; i < view.ayahBoundaries.length; i++) {

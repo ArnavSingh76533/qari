@@ -3,6 +3,13 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+/// Widget bounds after all FittedBox transforms, including size scaling.
+Rect mushafRect(WidgetTester tester, Finder finder) {
+  final render = tester.renderObject<RenderBox>(finder);
+  return MatrixUtils.transformRect(render.getTransformTo(null),
+      Offset.zero & render.size);
+}
+
 /// Reads the actual word spans, excluding separators and ayah markers.
 /// Fail if the paragraph is absent so colour assertions cannot pass vacuously.
 List<TextSpan> mushafWordSpans() {
@@ -68,7 +75,7 @@ Rect mushafWordRect(WidgetTester tester, int wordIndex) {
     }
     expect(rect.width, greaterThan(0));
     expect(rect.height, greaterThan(0));
-    return rect.shift(render.localToGlobal(Offset.zero));
+    return MatrixUtils.transformRect(render.getTransformTo(null), rect);
   }
   throw RangeError('Mushaf word index $wordIndex was not rendered');
 }
@@ -96,6 +103,13 @@ void expectNaturalMushafSpaces(WidgetTester tester, {required String reason}) {
         .width;
     reference.dispose();
     expect(natural, greaterThan(0), reason: 'Hafs space metric must be loaded');
+    final transform = render.getTransformTo(null);
+    final scaledNatural = MatrixUtils.transformRect(transform,
+      Rect.fromLTWH(0, 0, natural, 1)).width;
+    final verticalScale = MatrixUtils.transformRect(transform,
+      const Rect.fromLTWH(0, 0, 1, 1)).height;
+    expect(scaledNatural / natural, closeTo(verticalScale, 0.001),
+      reason: '$reason: a line must scale glyphs and spaces uniformly');
     final text = paragraph.text.toPlainText(includeSemanticsLabels: false);
     for (var i = 0; i < text.length; i++) {
       if (text[i] != ' ' && text[i] != '\u00a0') continue;
@@ -104,9 +118,10 @@ void expectNaturalMushafSpaces(WidgetTester tester, {required String reason}) {
       );
       for (final box in boxes) {
         checked++;
-        expect(box.toRect().width, lessThanOrEqualTo(natural + 0.05),
+        final actual = MatrixUtils.transformRect(transform, box.toRect()).width;
+        expect(actual, lessThanOrEqualTo(scaledNatural + 0.05),
             reason: '$reason: separator $i must not exceed the natural '
-                '${natural.toStringAsFixed(3)}dp Hafs space');
+                '${scaledNatural.toStringAsFixed(3)}dp scaled Hafs space');
       }
     }
   }
@@ -123,16 +138,15 @@ List<Rect> mushafWordRects(WidgetTester tester) {
     final finder = paragraphs.at(i);
     final paragraph = tester.widget<MushafParagraph>(finder);
     final render = tester.renderObject<RenderParagraph>(finder);
-    final origin = render.localToGlobal(Offset.zero);
+    final transform = render.getTransformTo(null);
     for (final range in paragraph.wordRanges) {
       final boxes = render.getBoxesForSelection(
         TextSelection(baseOffset: range.start, extentOffset: range.end),
       );
       expect(boxes, isNotEmpty, reason: 'a body word has no selection boxes');
-      result.add(boxes
+      result.add(MatrixUtils.transformRect(transform, boxes
           .map((box) => box.toRect())
-          .reduce((a, b) => a.expandToInclude(b))
-          .shift(origin));
+          .reduce((a, b) => a.expandToInclude(b))));
     }
   }
   return result;
@@ -158,7 +172,7 @@ List<Rect> mushafTextRows(WidgetTester tester) {
     final text = element.widget as Text;
     if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!))
       continue;
-    final rect = tester.getRect(find.byWidget(text));
+    final rect = mushafRect(tester, find.byWidget(text));
     var best = -1;
     var overlap = 0.0;
     for (var j = 0; j < rows.length; j++) {

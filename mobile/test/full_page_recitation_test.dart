@@ -125,9 +125,9 @@ void main() {
           reason: 'Quran must fill the viewport instead of a short card');
       expect(page.bottom, closeTo(bar.top, 18));
       expect(
-          tester.getRect(find.text('٧')).bottom, greaterThan(page.bottom - 80),
+          mushafRect(tester, find.text('٧')).bottom, greaterThan(page.bottom - 80),
           reason: 'Quran lines should use the whole sheet');
-      expect(tester.getRect(find.text('٧')).bottom, lessThanOrEqualTo(bar.top));
+      expect(mushafRect(tester, find.text('٧')).bottom, lessThanOrEqualTo(bar.top));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       expect(position.maxScrollExtent, lessThanOrEqualTo(2),
@@ -197,7 +197,7 @@ void main() {
       expect(find.textContaining('Page ${target.$1} |'), findsOneWidget);
       final page = tester.getRect(find.byType(MushafPageFrame));
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
-      final marker = tester.getRect(find.text(target.$4).last);
+      final marker = mushafRect(tester, find.text(target.$4).last);
       expect(marker.bottom, lessThanOrEqualTo(bar.top));
       expect(page.bottom, lessThanOrEqualTo(bar.top));
       final position =
@@ -227,7 +227,7 @@ void main() {
             .widget<MushafRevealView>(find.byType(MushafRevealView))
             .tajweedEnabled,
         isTrue);
-    final before = tester.getRect(find.text('٤٠').last);
+    final before = mushafRect(tester, find.text('٤٠').last);
     final bodyBefore = mushafWordRects(tester);
     final wordsBefore = mushafWords();
     await tester.tap(find.byTooltip('Mushaf appearance'));
@@ -244,7 +244,7 @@ void main() {
     expect(mushafWords(), wordsBefore);
     expect(mushafWordRects(tester), bodyBefore,
         reason: 'Tajweed changes must preserve every shaped word rectangle');
-    expect(tester.getRect(find.text('٤٠').last), before,
+    expect(mushafRect(tester, find.text('٤٠').last), before,
         reason: 'colour changes must preserve the Quran word layout');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -312,7 +312,7 @@ void main() {
       final controls = tester.getRect(find.byType(FloatingRecitationBar));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
-      final lastBottom = tester.getRect(marker).bottom;
+      final lastBottom = mushafRect(tester, marker).bottom;
       if (lastBottom > controls.top || position.maxScrollExtent > 2) {
         final paragraph =
             tester.widget<MushafParagraph>(find.byType(MushafParagraph).first);
@@ -320,9 +320,16 @@ void main() {
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
       }
-      final paragraphBounds = tester.getRect(find.byType(MushafParagraph));
-      for (final row in mushafTextRows(tester)) {
+      final paragraphBounds = tester.getRect(find.byType(MushafRevealView));
+      final rows = mushafTextRows(tester);
+      final paragraphs = tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
+      if (rows.length != paragraphs.length) failures.add('page $page: a printed line wrapped');
+      var wordEnd = -1;
+      for (var i = 0; i < rows.length; i++) {
+        final row = rows[i];
+        wordEnd += paragraphs[i].wordSpans.length;
         if (row.left < paragraphBounds.left - 0.5 ||
+            (!reveal.surahEnds.contains(wordEnd) && (row.left - paragraphBounds.left).abs() > 1) ||
             (row.right - paragraphBounds.right).abs() > 1) {
           failures.add('page $page: RTL row $row outside $paragraphBounds');
         }
@@ -352,7 +359,7 @@ void main() {
             matching: find.byType(Text),
           )
           .evaluate()) {
-        final rect = tester.getRect(find.byWidget(element.widget));
+        final rect = mushafRect(tester, find.byWidget(element.widget));
         expect(rect.left, greaterThanOrEqualTo(frame.left),
             reason: 'page $page');
         expect(rect.right, lessThanOrEqualTo(frame.right),

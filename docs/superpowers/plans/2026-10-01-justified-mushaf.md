@@ -1,5 +1,7 @@
 # Natural Hafs word-spacing regression fix
 
+Superseded by the user-requested [Mushaf line engine](2026-10-01-mushaf-line-engine.md).
+
 The latest requirement gives natural, tight word spacing priority over forcing
 both page margins flush. Short/final lines may remain right-aligned; blank
 spaces must not stretch beyond the Hafs font's natural space advance.

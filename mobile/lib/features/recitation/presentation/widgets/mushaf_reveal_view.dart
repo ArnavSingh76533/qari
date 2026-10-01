@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -6,26 +8,12 @@ import '../../../../data/models/word_model.dart';
 import '../mushaf/mushaf_theme.dart';
 import '../word_view_state.dart';
 
-/// A continuous, book-like (Mushaf) render of the recitation as it is revealed
-/// in real time.
+/// A printed Mushaf assembled from individually shaped RTL lines.
 ///
-/// The whole target is laid out up front as one uninterrupted RTL paragraph
-/// that wraps line-by-line exactly like a printed Quran — no per-ayah
-/// containers or breaks. Live verdicts only recolour words in place, so the
-/// layout never shifts.
-///
-/// Two reading modes decide how an unspoken word looks:
-///   * Tilawat (default) — the full page is visible in crisp book ink.
-///   * Hifz ([hideUnspoken]) — unspoken words are fully transparent but keep
-///     their exact size, so revealing a word never reflows the line. The ayah
-///     medallions stay visible to guide the reciter.
-///
-/// The ornate ayah medallion is drawn by the KFGQPC Hafs font itself from the
-/// verse number's Arabic-Indic digits, exactly as in the printed Madinah Mushaf.
-///
-/// A stable [caretKey] is attached to a zero-width anchor at the very end of
-/// the flow, so the parent page can measure the latest revealed word's
-/// position and auto-scroll it back into the upper half of the viewport.
+/// Each complete line is fitted as one unit: letters, natural font spaces and
+/// inline ayah medallions share the same uniform transform. Verdicts, Tajweed
+/// colours and Hifz visibility only change ink, never the line allocation.
+/// Actual surah-ending lines keep their natural width at the right margin.
 class MushafRevealView extends StatelessWidget {
   /// Complete target words in recitation order; verdicts only change their ink.
   final List<String> words;
@@ -96,12 +84,14 @@ class MushafRevealView extends StatelessWidget {
   final double minimumHeight;
   final Map<int, double> blockHeights;
 
-  /// Verified printed line ends supply the page's line-count budget.
-  /// Actual breaks use continuous paragraph shaping, not fixed word rows.
+  /// Inclusive body-word indices of the verified printed line endings.
   final List<int> lineEnds;
 
-  static final Map<(String, TextScaler), (double, double, int)> _layoutCache =
-      {};
+  /// Inclusive body-word indices ending a surah, rather than just a page.
+  /// These lines are right-aligned at their natural size and never expanded.
+  final List<int> surahEnds;
+
+  static final Map<(String, TextScaler), _PageLayout> _layoutCache = {};
 
   const MushafRevealView({
     super.key,
@@ -123,6 +113,7 @@ class MushafRevealView extends StatelessWidget {
     this.minimumHeight = 0,
     this.blockHeights = const {},
     this.lineEnds = const [],
+    this.surahEnds = const [],
   });
 
   String? _labelForBoundary(int wordIndex) {
@@ -136,79 +127,77 @@ class MushafRevealView extends StatelessWidget {
     return LayoutBuilder(builder: (context, constraints) {
       if (words.isEmpty) return SizedBox(height: minimumHeight, key: caretKey);
       final width = constraints.maxWidth;
-      final scaler = MediaQuery.textScalerOf(context);
-      final layout = _fitPage(context, width, scaler);
-      var content = _compose(context, width, layout.$1, layout.$2);
-      final painter =
-          content.measure(width, TextScaler.noScaling, maxLines: layout.$3);
-      final rects = <Rect>[];
-      for (final range in content.ranges) {
-        final boxes = painter.getBoxesForSelection(
-          TextSelection(baseOffset: range.start, extentOffset: range.end),
-        );
-        rects.add(boxes.isEmpty
-            ? Rect.zero
-            : boxes
-                .map((b) => b.toRect())
-                .reduce((a, b) => a.expandToInclude(b)));
-      }
-      final markerOffsets = <int, double>{};
-      final placeholderBoxes = painter.inlinePlaceholderBoxes ?? const [];
-      for (final entry in content.markers.entries) {
-        final (placeholderIndex, markerWidth) = entry.value;
-        if (placeholderIndex < placeholderBoxes.length) {
-          markerOffsets[entry.key] = rects[entry.key].left -
-              markerWidth -
-              placeholderBoxes[placeholderIndex].left;
+      if (!width.isFinite || width <= 0) return const SizedBox.shrink();
+      final layout = _layoutPage(context, width, MediaQuery.textScalerOf(context));
+      final gap = math.max(0.0, minimumHeight - layout.height) / layout.lines.length;
+      final children = <Widget>[];
+      var top = 0.0;
+      for (final line in layout.lines) {
+        final block = blocksBefore[line.start];
+        if (block != null) {
+          final nativeHeight = blockHeights[line.start] ?? 92;
+          final height = nativeHeight * layout.blockScale;
+          children.add(Positioned(top: top, left: 0, right: 0, height: height,
+            child: FittedBox(fit: BoxFit.contain,
+              child: SizedBox(width: width, height: nativeHeight, child: block))));
+          top += height;
         }
+        top += gap;
+        final height = line.nativeSize.height * line.scale;
+        children.add(Positioned(top: top, left: 0, right: 0, height: height,
+          child: _buildLine(context, line, layout.fontSize, layout.leading)));
+        top += height;
       }
-      painter.dispose();
-      content = _compose(context, width, layout.$1, layout.$2,
-          markerOffsets: markerOffsets);
-      final paragraph = MushafParagraph(
-        wordRanges: content.ranges,
-        wordSpans: content.words,
-        text: content.span,
-        textScaler: TextScaler.noScaling,
-        maxLines: layout.$3,
-      );
-      final tap = onMistakeTap;
-      return Directionality(
-        textDirection: TextDirection.rtl,
-        child: Stack(
-          children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: minimumHeight),
-              child: paragraph,
-            ),
-            if (tap != null)
-              for (var i = 0; i < rects.length; i++)
-                if (_state(i) == LiveWordViewState.mismatch)
-                  Positioned.fromRect(
-                    rect: rects[i],
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => tap(i),
-                    ),
-                  ),
-            if (!reviewMode &&
-                cursorKey != null &&
-                cursor >= 0 &&
-                cursor < rects.length)
-              Positioned.fromRect(
-                rect: rects[cursor],
-                child: IgnorePointer(child: SizedBox(key: cursorKey)),
-              ),
-            if (caretKey != null &&
-                (cursorKey == null || cursor < 0 || cursor >= words.length))
-              Positioned(
-                  bottom: 0,
-                  left: 0,
-                  child: SizedBox(key: caretKey, width: 0, height: 0)),
-          ],
-        ),
-      );
+      if (caretKey != null &&
+          (cursorKey == null || cursor < 0 || cursor >= words.length)) {
+        children.add(Positioned(bottom: 0, left: 0,
+          child: SizedBox(key: caretKey, width: 0, height: 0)));
+      }
+      return Directionality(textDirection: TextDirection.rtl,
+        child: SizedBox(height: math.max(minimumHeight, top),
+          child: Stack(clipBehavior: Clip.none, children: children)));
     });
+  }
+
+  Widget _buildLine(BuildContext context, _LineLayout line, double size, double leading) {
+    var content = _compose(context, line.start, line.end, size, leading);
+    final painter = content.measure(line.nativeSize.width);
+    final rects = <Rect>[];
+    for (final range in content.ranges) {
+      final boxes = painter.getBoxesForSelection(
+        TextSelection(baseOffset: range.start, extentOffset: range.end));
+      rects.add(boxes.isEmpty ? Rect.zero : boxes.map((b) => b.toRect())
+        .reduce((a, b) => a.expandToInclude(b)));
+    }
+    final markerOffsets = <int, double>{};
+    final placeholders = painter.inlinePlaceholderBoxes ?? const [];
+    for (final entry in content.markers.entries) {
+      final (placeholderIndex, markerWidth) = entry.value;
+      if (placeholderIndex < placeholders.length) {
+        markerOffsets[entry.key] = rects[entry.key - line.start].left -
+          markerWidth - placeholders[placeholderIndex].left;
+      }
+    }
+    painter.dispose();
+    content = _compose(context, line.start, line.end, size, leading,
+      markerOffsets: markerOffsets);
+    final tap = onMistakeTap;
+    return FittedBox(fit: BoxFit.contain, alignment: Alignment.centerRight,
+      child: SizedBox.fromSize(size: line.nativeSize,
+        child: Stack(clipBehavior: Clip.none, children: [
+          MushafParagraph(wordRanges: content.ranges, wordSpans: content.words,
+            text: content.span, textScaler: TextScaler.noScaling, maxLines: 1),
+          if (tap != null)
+            for (var local = 0; local < rects.length; local++)
+              if (_state(line.start + local) == LiveWordViewState.mismatch)
+                Positioned.fromRect(rect: rects[local],
+                  child: GestureDetector(behavior: HitTestBehavior.opaque,
+                    onTap: () => tap(line.start + local))),
+          if (!reviewMode && cursorKey != null &&
+              cursor >= line.start && cursor <= line.end)
+            Positioned.fromRect(rect: rects[cursor - line.start],
+              child: IgnorePointer(child: SizedBox(key: cursorKey))),
+        ])));
   }
 
   LiveWordViewState _state(int index) {
@@ -221,80 +210,129 @@ class MushafRevealView extends StatelessWidget {
             serverStatus: status, index: index, cursor: cursor);
   }
 
-  // Fit the same shaped paragraph that RichText paints. Printed page metadata
-  // supplies the line budget; words wrap through the paragraph's RTL engine,
-  // never through independent centered rows or manually expanded word boxes.
-  (double, double, int) _fitPage(
-      BuildContext context, double width, TextScaler scaler) {
-    final cacheKey = (
+  _PageLayout _layoutPage(BuildContext context, double width, TextScaler scaler) {
+    final key = (
       '${words.join(' ')}|${ayahBoundaries.join(',')}|${ayahLabels.join(',')}|'
-          '${blocksBefore.keys.join(',')}|${blockHeights.entries.join(',')}|'
-          '$width|$minimumHeight|$fontSize|${lineEnds.length}',
-      scaler
-    );
-    final cached = _layoutCache[cacheKey];
+      '${lineEnds.join(',')}|${surahEnds.join(',')}|${blocksBefore.keys.join(',')}|'
+      '${blockHeights.entries.join(',')}|$width|$minimumHeight|$fontSize', scaler);
+    final cached = _layoutCache[key];
     if (cached != null) return cached;
-    const baseHeight = 1.65;
-    (double, int) measure(double size, double height) {
-      final content = _compose(context, width, size, height, decorate: false);
-      final painter = content.measure(width, TextScaler.noScaling);
-      final lines = painter.computeLineMetrics();
-      final count = lines.length;
-      painter.dispose();
-      final visible =
-          content.measure(width, TextScaler.noScaling, maxLines: count);
-      final bottom = visible.height;
-      visible.dispose();
-      return (bottom, count);
-    }
-
-    var size = fontSize;
-    if (minimumHeight > 0) {
-      final minimumSize = lineEnds.isEmpty ? 13.0 : 1.0;
-      var low = minimumSize;
-      var high = 40.0;
-      final lineBudget =
-          lineEnds.isEmpty ? null : lineEnds.length + blocksBefore.length;
-      for (var i = 0; i < 14; i++) {
+    final baseSize = scaler.scale(fontSize);
+    var size = baseSize;
+    var ends = _allocateLines(context, width, size);
+    var result = _measurePage(context, width, size, ends);
+    // Without printed metadata (surah/range targets or multi-page ayahs),
+    // measure complete word/marker units at a readable size and wrap them.
+    // Long targets retain a readable minimum and scroll as a whole.
+    if (lineEnds.isEmpty && minimumHeight > 0 && result.height > minimumHeight) {
+      var low = math.min(size, scaler.scale(13));
+      var high = size;
+      for (var i = 0; i < 10; i++) {
         final mid = (low + high) / 2;
-        final result = measure(mid, baseHeight);
-        if (result.$1 <= minimumHeight &&
-            (lineBudget == null || result.$2 <= lineBudget)) {
-          low = mid;
-        } else {
-          high = mid;
-        }
+        final candidateEnds = _allocateLines(context, width, mid);
+        final candidate = _measurePage(context, width, mid, candidateEnds);
+        if (candidate.height <= minimumHeight) { low = mid; } else { high = mid; }
       }
       size = low;
+      ends = _allocateLines(context, width, size);
+      result = _measurePage(context, width, size, ends);
     }
-    var leading = baseHeight;
-    var result = measure(size, leading);
-    if (minimumHeight > 0 && result.$1 < minimumHeight) {
-      var low = leading;
-      var high = leading + minimumHeight / scaler.scale(size);
-      for (var i = 0; i < 14; i++) {
-        final mid = (low + high) / 2;
-        if (measure(size, mid).$1 <= minimumHeight) {
-          low = mid;
-        } else {
-          high = mid;
-        }
-      }
-      leading = low;
-      result = measure(size, leading);
-    }
-    final fitted = (size, leading, result.$2);
     if (_layoutCache.length >= 8) _layoutCache.remove(_layoutCache.keys.first);
-    _layoutCache[cacheKey] = fitted;
-    return fitted;
+    _layoutCache[key] = result;
+    return result;
+  }
+
+  List<int> _allocateLines(BuildContext context, double width, double size) {
+    final forced = <int>{
+      for (final start in blocksBefore.keys) if (start > 0 && start < words.length) start - 1,
+      for (final end in surahEnds) if (end >= 0 && end < words.length) end,
+    };
+    var previous = -1;
+    final valid = lineEnds.isNotEmpty && lineEnds.every((end) {
+      final ok = end > previous && end < words.length;
+      previous = end;
+      return ok;
+    });
+    if (valid && lineEnds.last == words.length - 1) {
+      return ({...lineEnds, ...forced}.toList()..sort());
+    }
+    final space = TextPainter(text: TextSpan(text: ' ',
+      style: _arabicStyle(size, mushaf.text, 1.65)),
+      textDirection: TextDirection.rtl)..layout();
+    final spaceWidth = space.width;
+    space.dispose();
+    final ends = <int>[];
+    final widths = <String, double>{};
+    var start = 0;
+    var used = 0.0;
+    for (var i = 0; i < words.length; i++) {
+      final key = '${words[i]}|${_labelForBoundary(i)}';
+      final wordWidth = widths.putIfAbsent(key, () {
+        final painter = _compose(context, i, i, size, 1.65, decorate: false).measure();
+        final measured = painter.width;
+        painter.dispose();
+        return measured;
+      });
+      if (i > start && (forced.contains(i - 1) || used + spaceWidth + wordWidth > width)) {
+        ends.add(i - 1);
+        start = i;
+        used = 0;
+      }
+      used += (i == start ? 0 : spaceWidth) + wordWidth;
+    }
+    ends.add(words.length - 1);
+    return ends;
+  }
+
+  _PageLayout _measurePage(BuildContext context, double width, double size, List<int> ends) {
+    const normalLeading = 1.65;
+    final sizes = <Size>[];
+    final scales = <double>[];
+    var start = 0;
+    for (final end in ends) {
+      final painter = _compose(context, start, end, size, normalLeading,
+        decorate: false).measure();
+      sizes.add(Size(painter.width, painter.height));
+      scales.add(width / math.max(painter.width, 0.001));
+      painter.dispose();
+      start = end + 1;
+    }
+    final bodyScales = [for (var i = 0; i < ends.length; i++)
+      if (!surahEnds.contains(ends[i])) scales[i]]..sort();
+    final endingScale = bodyScales.isEmpty ? 1.0 : math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
+    for (var i = 0; i < ends.length; i++) {
+      if (surahEnds.contains(ends[i])) scales[i] = math.min(scales[i], endingScale);
+    }
+    final openings = blocksBefore.keys.where((i) => i >= 0 && i < words.length)
+      .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92));
+    final bodyHeight = List.generate(sizes.length, (i) => sizes[i].height * scales[i])
+      .fold(0.0, (a, b) => a + b);
+    var leading = normalLeading;
+    var blockScale = 1.0;
+    if (lineEnds.isNotEmpty && minimumHeight > 0 && bodyHeight + openings > minimumHeight) {
+      if (openings > 0) blockScale = ((minimumHeight - bodyHeight) / openings).clamp(0.5, 1.0);
+      leading = (normalLeading * (minimumHeight - openings * blockScale) / bodyHeight)
+        .clamp(1.1, normalLeading);
+    }
+    final lines = <_LineLayout>[];
+    var height = openings * blockScale;
+    start = 0;
+    for (var i = 0; i < ends.length; i++) {
+      if (leading != normalLeading) {
+        final painter = _compose(context, start, ends[i], size, leading, decorate: false).measure();
+        sizes[i] = Size(painter.width, painter.height);
+        painter.dispose();
+      }
+      lines.add(_LineLayout(start, ends[i], sizes[i], scales[i]));
+      height += sizes[i].height * scales[i];
+      start = ends[i] + 1;
+    }
+    return _PageLayout(size, leading, blockScale, height, lines);
   }
 
   _ParagraphContent _compose(
-      BuildContext context, double width, double size, double leading,
+      BuildContext context, int start, int end, double size, double leading,
       {bool decorate = true, Map<int, double> markerOffsets = const {}}) {
-    // Scale glyphs once, then lay out widgets and text in the same dp space.
-    // RichText otherwise automatically scales WidgetSpans a second time.
-    size = MediaQuery.textScalerOf(context).scale(size);
     final children = <InlineSpan>[];
     final ranges = <TextRange>[];
     final wordSpans = <TextSpan>[];
@@ -324,12 +362,8 @@ class MushafRevealView extends StatelessWidget {
       offset++;
     }
 
-    for (var i = 0; i < words.length; i++) {
-      if (i > 0) text(' ');
-      final block = blocksBefore[i];
-      if (block != null) {
-        placeholder(block, Size(width, blockHeights[i] ?? 92));
-      }
+    for (var i = start; i <= end; i++) {
+      if (i > start) text(' ');
       final span = _wordSpan(i, context, decorate);
       ranges.add(TextRange(start: offset, end: offset + words[i].length));
       wordSpans.add(span);
@@ -348,7 +382,7 @@ class MushafRevealView extends StatelessWidget {
             semanticsLabel: '',
             style: const TextStyle(color: Colors.transparent)));
         offset += reservation.length;
-        final style = _arabicStyle(size, mushaf.accent, 1.65);
+        final style = _arabicStyle(size, mushaf.accent, leading);
         final marker = TextPainter(
           text: TextSpan(text: digits, style: style),
           textDirection: TextDirection.rtl,
@@ -480,7 +514,7 @@ class MushafRevealView extends StatelessWidget {
   }
 }
 
-/// The single shaped body paragraph and its source-word ranges. Keeping ranges
+/// One shaped RTL line and its source-word ranges. Keeping ranges
 /// alongside the spans lets cursor anchors and review taps use glyph geometry
 /// without adding inline word containers or changing Arabic shaping.
 class MushafParagraph extends RichText {
@@ -496,7 +530,7 @@ class MushafParagraph extends RichText {
       required super.maxLines})
       // Stock paragraph justification expands blank spaces. Keep the Hafs
       // font's natural advances on every row, including short/final rows.
-      : super(textAlign: TextAlign.right, textDirection: TextDirection.rtl);
+      : super(textAlign: TextAlign.right, textDirection: TextDirection.rtl, softWrap: false);
 }
 
 class _ParagraphContent {
@@ -508,16 +542,30 @@ class _ParagraphContent {
   const _ParagraphContent(
       this.span, this.dimensions, this.ranges, this.words, this.markers);
 
-  TextPainter measure(double width, TextScaler scaler, {int? maxLines}) =>
-      TextPainter(
-        text: span,
-        textAlign: TextAlign.right,
-        textDirection: TextDirection.rtl,
-        textScaler: scaler,
-        maxLines: maxLines,
-      )
+  TextPainter measure([double? width]) =>
+      TextPainter(text: span, textAlign: TextAlign.right,
+        textDirection: TextDirection.rtl, textScaler: TextScaler.noScaling,
+        maxLines: width == null ? null : 1)
         ..setPlaceholderDimensions(dimensions)
-        ..layout(minWidth: width, maxWidth: width);
+        ..layout(minWidth: width ?? 0, maxWidth: width ?? double.infinity);
+
+}
+
+class _LineLayout {
+  final int start;
+  final int end;
+  final Size nativeSize;
+  final double scale;
+  const _LineLayout(this.start, this.end, this.nativeSize, this.scale);
+}
+
+class _PageLayout {
+  final double fontSize;
+  final double leading;
+  final double blockScale;
+  final double height;
+  final List<_LineLayout> lines;
+  const _PageLayout(this.fontSize, this.leading, this.blockScale, this.height, this.lines);
 }
 
 TextStyle _arabicStyle(double size, Color? color, double height) =>

@@ -373,7 +373,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final frame = tester.getRect(find.byType(MushafPageFrame));
-      final marker = tester.getRect(lastMarker);
+      final marker = mushafRect(tester, lastMarker);
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
       // The last ayah is inside the page border...
       expect(frame.contains(marker.topLeft), isTrue);
