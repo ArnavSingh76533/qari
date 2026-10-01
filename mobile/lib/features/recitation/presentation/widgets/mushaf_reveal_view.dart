@@ -135,12 +135,13 @@ class MushafRevealView extends StatelessWidget {
           math.max(0.0, minimumHeight - layout.height) / layout.lines.length;
       final children = <Widget>[];
       var top = 0.0;
+      var previousBottomOverflow = 0.0;
       for (final line in layout.lines) {
         final block = blocksBefore[line.start];
         if (block != null) {
           final nativeHeight = blockHeights[line.start] ?? 92;
           final height = nativeHeight * layout.blockScale;
-          top += _openingGap * layout.blockScale;
+          top += _openingGap + previousBottomOverflow;
           children.add(Positioned(
               top: top,
               left: 0,
@@ -149,8 +150,9 @@ class MushafRevealView extends StatelessWidget {
               child: FittedBox(
                   fit: BoxFit.contain,
                   child: SizedBox(
-                      width: width, height: nativeHeight, child: block))));
-          top += height + _openingGap * layout.blockScale;
+                      width: width, height: nativeHeight,
+                      child: MediaQuery.withNoTextScaling(child: block)))));
+          top += height + _openingGap + line.topOverflow;
         }
         top += gap;
         final height = line.nativeSize.height * line.scale;
@@ -161,6 +163,7 @@ class MushafRevealView extends StatelessWidget {
             height: height,
             child: _buildLine(context, line, layout.fontSize, layout.leading)));
         top += height;
+        previousBottomOverflow = line.bottomOverflow;
       }
       if (caretKey != null &&
           (cursorKey == null || cursor < 0 || cursor >= words.length)) {
@@ -337,80 +340,70 @@ class MushafRevealView extends StatelessWidget {
   _PageLayout _measurePage(
       BuildContext context, double width, double size, List<int> ends) {
     const normalLeading = 1.65;
-    final sizes = <Size>[];
-    final scales = <double>[];
-    var start = 0;
-    for (final end in ends) {
-      final painter =
-          _compose(context, start, end, size, normalLeading, decorate: false)
-              .measure();
-      sizes.add(Size(painter.width, painter.height));
-      scales.add(width / math.max(painter.width, 0.001));
-      painter.dispose();
-      start = end + 1;
+    List<_NativeLine> measureLines(double leading) {
+      final result = <_NativeLine>[];
+      var start = 0;
+      for (final end in ends) {
+        final content = _compose(context, start, end, size, leading, decorate: false);
+        final painter = content.measure();
+        // Hafs selection metrics may extend slightly outside the paragraph's
+        // rounded line height. Keep that clearance beside opening blocks.
+        final boxes = painter.getBoxesForSelection(TextSelection(baseOffset: 0,
+          extentOffset: content.span.toPlainText(includeSemanticsLabels: false).length));
+        final bounds = boxes.isEmpty ? Rect.zero : boxes.map((b) => b.toRect())
+          .reduce((a, b) => a.expandToInclude(b));
+        result.add(_NativeLine(Size(painter.width, painter.height),
+          math.max(0.0, -bounds.top), math.max(0.0, bounds.bottom - painter.height)));
+        painter.dispose();
+        start = end + 1;
+      }
+      return result;
     }
-    final bodyScales = [
-      for (var i = 0; i < ends.length; i++)
-        if (!surahEnds.contains(ends[i])) scales[i]
-    ]..sort();
-    final endingScale = bodyScales.isEmpty
-        ? 1.0
-        : math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
+    var native = measureLines(normalLeading);
+    final scales = [for (final line in native)
+      width / math.max(line.size.width, 0.001)];
+    final bodyScales = [for (var i = 0; i < ends.length; i++)
+      if (!surahEnds.contains(ends[i])) scales[i]]..sort();
+    final endingScale = bodyScales.isEmpty ? 1.0 :
+      math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
     for (var i = 0; i < ends.length; i++) {
-      if (surahEnds.contains(ends[i]))
-        scales[i] = math.min(scales[i], endingScale);
+      if (surahEnds.contains(ends[i])) scales[i] = math.min(scales[i], endingScale);
     }
-    final openings = blocksBefore.keys
-        .where((i) => i >= 0 && i < words.length)
-        .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92) + 2 * _openingGap);
-    final bodyHeight =
-        List.generate(sizes.length, (i) => sizes[i].height * scales[i])
-            .fold(0.0, (a, b) => a + b);
+    final starts = [0, ...ends.take(ends.length - 1).map((end) => end + 1)];
+    final openings = blocksBefore.keys.where((i) => i >= 0 && i < words.length)
+      .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92));
     var leading = normalLeading;
     var blockScale = 1.0;
-    List<Size> measureSizes(double lineLeading) {
-      final measured = <Size>[];
-      var first = 0;
-      for (final end in ends) {
-        final painter = _compose(context, first, end, size, lineLeading,
-          decorate: false).measure();
-        measured.add(Size(painter.width, painter.height));
-        painter.dispose();
-        first = end + 1;
+    double pageHeight(List<_NativeLine> measured) {
+      var height = openings * blockScale;
+      for (var i = 0; i < measured.length; i++) {
+        height += measured[i].size.height * scales[i];
+        if (blocksBefore.containsKey(starts[i])) {
+          height += 2 * _openingGap + measured[i].topOverflow * scales[i];
+          if (i > 0) height += measured[i - 1].bottomOverflow * scales[i - 1];
+        }
       }
-      return measured;
+      return height;
     }
-    double pageHeight(List<Size> measured) => openings * blockScale +
-      List.generate(measured.length, (i) => measured[i].height * scales[i])
-        .fold(0.0, (a, b) => a + b);
-    if (lineEnds.isNotEmpty && minimumHeight > 0 && bodyHeight + openings > minimumHeight) {
+    if (lineEnds.isNotEmpty && minimumHeight > 0 && pageHeight(native) > minimumHeight) {
       if (openings > 0) {
-        blockScale = ((minimumHeight - bodyHeight) / openings).clamp(0.5, 1.0);
+        blockScale = (1 + (minimumHeight - pageHeight(native)) / openings).clamp(0.5, 1.0);
       }
-      // TextPainter rounds each native line height separately. Fit those exact
-      // measured heights; multiplying a page-wide height ratio can overshoot.
+      // Fit exact rounded native line heights and glyph/header clearance.
+      // Changing leading never changes the horizontal glyph/space transform.
       var low = 1.1;
       var high = normalLeading;
       for (var i = 0; i < 12; i++) {
         final mid = (low + high) / 2;
-        if (pageHeight(measureSizes(mid)) <= minimumHeight) {
-          low = mid;
-        } else {
-          high = mid;
-        }
+        if (pageHeight(measureLines(mid)) <= minimumHeight) { low = mid; } else { high = mid; }
       }
       leading = low;
-      sizes.setAll(0, measureSizes(leading));
+      native = measureLines(leading);
     }
-    final lines = <_LineLayout>[];
-    var height = openings * blockScale;
-    start = 0;
-    for (var i = 0; i < ends.length; i++) {
-      lines.add(_LineLayout(start, ends[i], sizes[i], scales[i]));
-      height += sizes[i].height * scales[i];
-      start = ends[i] + 1;
-    }
-    return _PageLayout(size, leading, blockScale, height, lines);
+    final lines = [for (var i = 0; i < ends.length; i++)
+      _LineLayout(starts[i], ends[i], native[i].size, scales[i],
+        native[i].topOverflow * scales[i], native[i].bottomOverflow * scales[i])];
+    return _PageLayout(size, leading, blockScale, pageHeight(native), lines);
   }
 
   _ParagraphContent _compose(
@@ -643,7 +636,17 @@ class _LineLayout {
   final int end;
   final Size nativeSize;
   final double scale;
-  const _LineLayout(this.start, this.end, this.nativeSize, this.scale);
+  final double topOverflow;
+  final double bottomOverflow;
+  const _LineLayout(this.start, this.end, this.nativeSize, this.scale,
+    this.topOverflow, this.bottomOverflow);
+}
+
+class _NativeLine {
+  final Size size;
+  final double topOverflow;
+  final double bottomOverflow;
+  const _NativeLine(this.size, this.topOverflow, this.bottomOverflow);
 }
 
 class _PageLayout {

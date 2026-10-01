@@ -198,8 +198,9 @@ void main() {
 
   testWidgets('surah openings retain measured heights at large text scale',
       (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: LiveRecitationPage(
-      surahNumber: 2, ayahNumber: 1, initialMode: RecitationMode.tilawat)));
+    for (final surah in [2, 112]) {
+    await tester.pumpWidget(MaterialApp(home: LiveRecitationPage(
+      surahNumber: surah, ayahNumber: 1, initialMode: RecitationMode.tilawat)));
     await tester.pumpAndSettle();
     final source = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
     final scroll = ScrollController();
@@ -234,6 +235,7 @@ void main() {
     expect(last.top, greaterThanOrEqualTo(0));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
+    }
   });
 
   for (final size in [const Size(360, 740), const Size(430, 932)]) {
