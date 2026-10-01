@@ -73,6 +73,41 @@ Rect mushafWordRect(WidgetTester tester, int wordIndex) {
   throw RangeError('Mushaf word index $wordIndex was not rendered');
 }
 
+/// Compare actual separator advances against an independently shaped space
+/// in the loaded Hafs font. This detects stretched gaps even when both page
+/// margins are flush. Wrapped/collapsed spaces may have zero advance.
+void expectNaturalMushafSpaces(WidgetTester tester, {required String reason}) {
+  var checked = 0;
+  for (final element in find.byType(MushafParagraph).evaluate()) {
+    final paragraph = element.widget as MushafParagraph;
+    final render = tester.renderObject<RenderParagraph>(find.byWidget(paragraph));
+    final reference = TextPainter(
+      text: TextSpan(text: 'ا ا', style: (paragraph.text as TextSpan).style),
+      textDirection: TextDirection.rtl,
+      textScaler: paragraph.textScaler,
+    )..layout();
+    final natural = reference.getBoxesForSelection(
+      const TextSelection(baseOffset: 1, extentOffset: 2),
+    ).single.toRect().width;
+    reference.dispose();
+    expect(natural, greaterThan(0), reason: 'Hafs space metric must be loaded');
+    final text = paragraph.text.toPlainText(includeSemanticsLabels: false);
+    for (var i = 0; i < text.length; i++) {
+      if (text[i] != ' ' && text[i] != '\u00a0') continue;
+      final boxes = render.getBoxesForSelection(
+        TextSelection(baseOffset: i, extentOffset: i + 1),
+      );
+      for (final box in boxes) {
+        checked++;
+        expect(box.toRect().width, lessThanOrEqualTo(natural + 0.05),
+            reason: '$reason: separator $i must not exceed the natural '
+                '${natural.toStringAsFixed(3)}dp Hafs space');
+      }
+    }
+  }
+  expect(checked, greaterThan(0), reason: '$reason: no spaces were measured');
+}
+
 /// Measures every word with one finder traversal, for full-corpus checks.
 List<Rect> mushafWordRects(WidgetTester tester) {
   final result = <Rect>[];

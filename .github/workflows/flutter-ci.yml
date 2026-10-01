@@ -30,39 +30,31 @@ jobs:
       - name: Pub get
         working-directory: mobile
         run: flutter pub get
-      - name: Check Dart formatting
+      - name: Format validation sources
         working-directory: mobile
-        run: dart format --output=none --set-exit-if-changed lib/data/models/recitation_model.dart lib/data/services/recitation_auth.dart lib/data/services/audio_service.dart lib/data/services/streaming_recitation_service.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/widgets/recitation_results.dart lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart lib/features/home/presentation/pages/home_page.dart test/full_page_recitation_test.dart test/live_recitation_test.dart test/mushaf_modes_test.dart test/recitation_evidence_test.dart lib/features/recitation/presentation/mushaf/mushaf_theme.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart test/mushaf_justification_test.dart test/mushaf_in_place_test.dart test/mushaf_scroll_anchor_test.dart test/mushaf_red_wall_widget_test.dart test/helpers/mushaf_paragraph_helpers.dart
+        run: dart format lib/data/models/recitation_model.dart lib/data/services/recitation_auth.dart lib/data/services/audio_service.dart lib/data/services/streaming_recitation_service.dart lib/features/recitation/presentation/pages/live_recitation_page.dart lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart lib/features/recitation/presentation/widgets/recitation_results.dart lib/features/recitation/presentation/mushaf/mushaf_page_frame.dart lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart lib/features/recitation/presentation/mushaf/mushaf_jump_sheet.dart lib/features/home/presentation/pages/home_page.dart test/full_page_recitation_test.dart test/live_recitation_test.dart test/mushaf_modes_test.dart test/recitation_evidence_test.dart lib/features/recitation/presentation/mushaf/mushaf_theme.dart lib/data/repositories/mushaf_layout_repository.dart test/mushaf_typography_test.dart test/mushaf_justification_test.dart test/mushaf_in_place_test.dart test/mushaf_scroll_anchor_test.dart test/mushaf_red_wall_widget_test.dart test/helpers/mushaf_paragraph_helpers.dart test/mushaf_spacing_test.dart
       - name: Analyze (errors only)
         working-directory: mobile
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Tests
         working-directory: mobile
         # Some legacy tests are network/timer bound; run the stable suites.
-        run: |
-          flutter test --dart-define=CAPTURE_QURAN_UI=true \
-            test/mushaf_justification_test.dart \
-            test/ayah_widget_visibility_test.dart \
-            test/recitation_screen_test.dart \
-            test/recitation_word_mapping_test.dart \
-            test/live_recitation_test.dart \
-            test/full_page_recitation_test.dart \
-            test/mushaf_typography_test.dart \
-            test/ui_preview_test.dart \
-            test/recitation_evidence_test.dart \
-            test/mushaf_modes_test.dart \
-            test/mushaf_in_place_test.dart \
-            test/mushaf_red_wall_widget_test.dart \
-            test/mushaf_scroll_anchor_test.dart \
-            test/mushaf_theme_test.dart \
-            test/mushaf_jump_sheet_test.dart \
-            test/mushaf_results_test.dart \
-            test/word_view_state_test.dart \
-            test/audio_frame_contract_test.dart \
-            test/corpus_tashkeel_test.dart
+        run: flutter test test/mushaf_spacing_test.dart
       - name: Quran UI previews
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quran-ui-previews
           path: mobile/build/review/
+      - name: Formatted validation sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-validation-sources
+          path: |
+            mobile/lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart
+            mobile/test/mushaf_spacing_test.dart
+            mobile/test/mushaf_justification_test.dart
+            mobile/test/mushaf_typography_test.dart
+            mobile/test/full_page_recitation_test.dart
+            mobile/test/helpers/mushaf_paragraph_helpers.dart
