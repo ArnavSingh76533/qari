@@ -150,7 +150,8 @@ class MushafRevealView extends StatelessWidget {
               child: FittedBox(
                   fit: BoxFit.contain,
                   child: SizedBox(
-                      width: width, height: nativeHeight,
+                      width: width,
+                      height: nativeHeight,
                       child: MediaQuery.withNoTextScaling(child: block)))));
           top += height + _openingGap + line.topOverflow;
         }
@@ -344,34 +345,50 @@ class MushafRevealView extends StatelessWidget {
       final result = <_NativeLine>[];
       var start = 0;
       for (final end in ends) {
-        final content = _compose(context, start, end, size, leading, decorate: false);
+        final content =
+            _compose(context, start, end, size, leading, decorate: false);
         final painter = content.measure();
         // Hafs selection metrics may extend slightly outside the paragraph's
         // rounded line height. Keep that clearance beside opening blocks.
-        final boxes = painter.getBoxesForSelection(TextSelection(baseOffset: 0,
-          extentOffset: content.span.toPlainText(includeSemanticsLabels: false).length));
-        final bounds = boxes.isEmpty ? Rect.zero : boxes.map((b) => b.toRect())
-          .reduce((a, b) => a.expandToInclude(b));
-        result.add(_NativeLine(Size(painter.width, painter.height),
-          math.max(0.0, -bounds.top), math.max(0.0, bounds.bottom - painter.height)));
+        final boxes = painter.getBoxesForSelection(TextSelection(
+            baseOffset: 0,
+            extentOffset: content.span
+                .toPlainText(includeSemanticsLabels: false)
+                .length));
+        final bounds = boxes.isEmpty
+            ? Rect.zero
+            : boxes
+                .map((b) => b.toRect())
+                .reduce((a, b) => a.expandToInclude(b));
+        result.add(_NativeLine(
+            Size(painter.width, painter.height),
+            math.max(0.0, -bounds.top),
+            math.max(0.0, bounds.bottom - painter.height)));
         painter.dispose();
         start = end + 1;
       }
       return result;
     }
+
     var native = measureLines(normalLeading);
-    final scales = [for (final line in native)
-      width / math.max(line.size.width, 0.001)];
-    final bodyScales = [for (var i = 0; i < ends.length; i++)
-      if (!surahEnds.contains(ends[i])) scales[i]]..sort();
-    final endingScale = bodyScales.isEmpty ? 1.0 :
-      math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
+    final scales = [
+      for (final line in native) width / math.max(line.size.width, 0.001)
+    ];
+    final bodyScales = [
+      for (var i = 0; i < ends.length; i++)
+        if (!surahEnds.contains(ends[i])) scales[i]
+    ]..sort();
+    final endingScale = bodyScales.isEmpty
+        ? 1.0
+        : math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
     for (var i = 0; i < ends.length; i++) {
-      if (surahEnds.contains(ends[i])) scales[i] = math.min(scales[i], endingScale);
+      if (surahEnds.contains(ends[i]))
+        scales[i] = math.min(scales[i], endingScale);
     }
     final starts = [0, ...ends.take(ends.length - 1).map((end) => end + 1)];
-    final openings = blocksBefore.keys.where((i) => i >= 0 && i < words.length)
-      .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92));
+    final openings = blocksBefore.keys
+        .where((i) => i >= 0 && i < words.length)
+        .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92));
     var leading = normalLeading;
     var blockScale = 1.0;
     double pageHeight(List<_NativeLine> measured) {
@@ -385,9 +402,13 @@ class MushafRevealView extends StatelessWidget {
       }
       return height;
     }
-    if (lineEnds.isNotEmpty && minimumHeight > 0 && pageHeight(native) > minimumHeight) {
+
+    if (lineEnds.isNotEmpty &&
+        minimumHeight > 0 &&
+        pageHeight(native) > minimumHeight) {
       if (openings > 0) {
-        blockScale = (1 + (minimumHeight - pageHeight(native)) / openings).clamp(0.5, 1.0);
+        blockScale = (1 + (minimumHeight - pageHeight(native)) / openings)
+            .clamp(0.5, 1.0);
       }
       // Fit exact rounded native line heights and glyph/header clearance.
       // Changing leading never changes the horizontal glyph/space transform.
@@ -395,14 +416,25 @@ class MushafRevealView extends StatelessWidget {
       var high = normalLeading;
       for (var i = 0; i < 12; i++) {
         final mid = (low + high) / 2;
-        if (pageHeight(measureLines(mid)) <= minimumHeight) { low = mid; } else { high = mid; }
+        if (pageHeight(measureLines(mid)) <= minimumHeight) {
+          low = mid;
+        } else {
+          high = mid;
+        }
       }
       leading = low;
       native = measureLines(leading);
     }
-    final lines = [for (var i = 0; i < ends.length; i++)
-      _LineLayout(starts[i], ends[i], native[i].size, scales[i],
-        native[i].topOverflow * scales[i], native[i].bottomOverflow * scales[i])];
+    final lines = [
+      for (var i = 0; i < ends.length; i++)
+        _LineLayout(
+            starts[i],
+            ends[i],
+            native[i].size,
+            scales[i],
+            native[i].topOverflow * scales[i],
+            native[i].bottomOverflow * scales[i])
+    ];
     return _PageLayout(size, leading, blockScale, pageHeight(native), lines);
   }
 
@@ -639,7 +671,7 @@ class _LineLayout {
   final double topOverflow;
   final double bottomOverflow;
   const _LineLayout(this.start, this.end, this.nativeSize, this.scale,
-    this.topOverflow, this.bottomOverflow);
+      this.topOverflow, this.bottomOverflow);
 }
 
 class _NativeLine {

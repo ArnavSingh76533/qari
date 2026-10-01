@@ -32,11 +32,11 @@
 **Interfaces:** Keep the view's existing inputs; add `List<int> surahEnds` populated from bundled corpus final ayahs. Each `MushafParagraph` holds one line's source spans/ranges. Test helpers transform selection rectangles into screen coordinates.
 
 - [x] Write printed-boundary and flush-margin regressions and observe failures in GitHub Actions before changing the renderer.
-- [ ] Implement printed/fallback allocation, per-line fitting, surah-ending exception and transformed anchors. Add coverage for final lines, metadata fallback and scaled review taps.
-- [ ] Migrate single-paragraph assertions to line/body geometry and compare rendered spaces to independently shaped Hafs advances under the same uniform scale.
-- [ ] Run the stable Flutter CI suites with real fonts and all 604 pages. Expected: every test passes, no analyzer errors, both margins flush on fitted lines and natural marker/space geometry.
-- [ ] Inspect Page 1/3/6/84 and mixed-surah screenshots at phone widths; fix any clipping/overflow while preserving the width fit.
-- [ ] Run a fresh read-only review, restore strict formatting, commit and push verified sources.
+- [x] Implement printed/fallback allocation, per-line fitting, surah-ending exception and transformed anchors. Add coverage for final lines, metadata fallback and scaled review taps.
+- [x] Migrate single-paragraph assertions to line/body geometry and compare rendered spaces to independently shaped Hafs advances under the same uniform scale.
+- [x] Run the stable Flutter CI suites with real fonts and all 604 pages. Expected: every test passes, no analyzer errors, both margins flush on fitted lines and natural marker/space geometry.
+- [x] Inspect Page 1/3/6/84 and mixed-surah screenshots at phone widths; fix any clipping/overflow while preserving the width fit.
+- [x] Run a fresh read-only review, restore strict formatting, commit and push verified sources.
 
 ### Task 2: Downloadable UI preview
 
@@ -49,3 +49,15 @@
 
 Red evidence: CI 36919074121 reports one paragraph instead of three and a
 182.705dp unused left margin on the short-line fixture. Both regressions fail.
+
+Green evidence: CI 36922531043 (f19b9263), 143/143 stable tests passed,
+including all 604 pages, real Hafs spaces under uniform transforms, printed
+line boundaries, true surah endings, review taps/cursor anchors and real
+Page 2/604 openings at 2× text scale. Inspected fresh Page 1/3/6/84/587/604
+captures: Page 3 has fifteen fitted lines and straight margins. Very short
+non-final rows (Page 587) necessarily enlarge when fitting the whole line;
+this follows the requested full-width policy rather than stretching spaces.
+
+Fresh read-only review found the opening text-scale regression (fixed and
+verified RED→GREEN); the narrow-paper fixture now verifies visible vertical
+bounds. Final APK/device behavior is checked by the build and package gates.

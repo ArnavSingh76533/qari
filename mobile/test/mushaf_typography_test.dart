@@ -199,42 +199,62 @@ void main() {
   testWidgets('surah openings retain measured heights at large text scale',
       (tester) async {
     for (final surah in [2, 112]) {
-    await tester.pumpWidget(MaterialApp(home: LiveRecitationPage(
-      surahNumber: surah, ayahNumber: 1, initialMode: RecitationMode.tilawat)));
-    await tester.pumpAndSettle();
-    final source = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
-    final scroll = ScrollController();
-    addTearDown(scroll.dispose);
-    await tester.pumpWidget(MaterialApp(
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
-        child: child!),
-      home: Scaffold(body: SizedBox(width: 360, height: 600,
-        child: SingleChildScrollView(controller: scroll,
-          child: MushafRevealView(words: source.words, statuses: const [],
-            mushaf: source.mushaf, fontSize: source.fontSize, minimumHeight: 500,
-            lineEnds: source.lineEnds, surahEnds: source.surahEnds,
-            ayahBoundaries: source.ayahBoundaries, ayahLabels: source.ayahLabels,
-            blocksBefore: source.blocksBefore, blockHeights: source.blockHeights))))));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull,
-      reason: 'fixed opening heights must not overflow at 2× system text scale');
-    final opening = find.byWidget(source.blocksBefore[0]!);
-    final openingBounds = mushafRect(tester, opening);
-    for (final text in find.descendant(of: opening, matching: find.byType(Text)).evaluate()) {
-      final bounds = mushafRect(tester, find.byWidget(text.widget));
-      expect(bounds.top, greaterThanOrEqualTo(openingBounds.top - 0.5));
-      expect(bounds.bottom, lessThanOrEqualTo(openingBounds.bottom + 0.5));
-    }
-    expect(mushafWords(), source.words);
-    expect(mushafWordRect(tester, 0).top, greaterThanOrEqualTo(openingBounds.bottom));
-    scroll.jumpTo(scroll.position.maxScrollExtent);
-    await tester.pumpAndSettle();
-    final last = mushafWordRect(tester, source.words.length - 1);
-    expect(last.bottom, lessThanOrEqualTo(600));
-    expect(last.top, greaterThanOrEqualTo(0));
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(MaterialApp(
+          home: LiveRecitationPage(
+              surahNumber: surah,
+              ayahNumber: 1,
+              initialMode: RecitationMode.tilawat)));
+      await tester.pumpAndSettle();
+      final source =
+          tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(MaterialApp(
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!),
+          home: Scaffold(
+              body: SizedBox(
+                  width: 360,
+                  height: 600,
+                  child: SingleChildScrollView(
+                      controller: scroll,
+                      child: MushafRevealView(
+                          words: source.words,
+                          statuses: const [],
+                          mushaf: source.mushaf,
+                          fontSize: source.fontSize,
+                          minimumHeight: 500,
+                          lineEnds: source.lineEnds,
+                          surahEnds: source.surahEnds,
+                          ayahBoundaries: source.ayahBoundaries,
+                          ayahLabels: source.ayahLabels,
+                          blocksBefore: source.blocksBefore,
+                          blockHeights: source.blockHeights))))));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull,
+          reason:
+              'fixed opening heights must not overflow at 2× system text scale');
+      final opening = find.byWidget(source.blocksBefore[0]!);
+      final openingBounds = mushafRect(tester, opening);
+      for (final text in find
+          .descendant(of: opening, matching: find.byType(Text))
+          .evaluate()) {
+        final bounds = mushafRect(tester, find.byWidget(text.widget));
+        expect(bounds.top, greaterThanOrEqualTo(openingBounds.top - 0.5));
+        expect(bounds.bottom, lessThanOrEqualTo(openingBounds.bottom + 0.5));
+      }
+      expect(mushafWords(), source.words);
+      expect(mushafWordRect(tester, 0).top,
+          greaterThanOrEqualTo(openingBounds.bottom));
+      scroll.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final last = mushafWordRect(tester, source.words.length - 1);
+      expect(last.bottom, lessThanOrEqualTo(600));
+      expect(last.top, greaterThanOrEqualTo(0));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
     }
   });
 
