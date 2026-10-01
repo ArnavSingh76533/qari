@@ -239,6 +239,8 @@ void main() {
           final word = bodyRects[view.ayahBoundaries[i]];
           expect(marker.top, lessThan(word.bottom));
           expect(marker.bottom, greaterThan(word.top));
+          expect(word.left - marker.right, inInclusiveRange(-0.5, 6.1),
+              reason: 'ayah $label marker must remain tightly after its final word');
         }
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());

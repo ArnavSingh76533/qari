@@ -444,6 +444,7 @@ class MushafRevealView extends StatelessWidget {
       }
       children.add(TextSpan(
           text: value.substring(i, end),
+          semanticsLabel: original.substring(i, end),
           style: TextStyle(
               color: rule == null
                   ? null
@@ -451,7 +452,7 @@ class MushafRevealView extends StatelessWidget {
                       Theme.of(context).brightness))));
       i = end;
     }
-    return TextSpan(semanticsLabel: original, style: style, children: children);
+    return TextSpan(style: style, children: children);
   }
 }
 
