@@ -10,6 +10,8 @@ import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/recitation_review.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'mushaf_text_helpers.dart';
+
 const _words = <String>[
   'ٱلْحَمْدُ',
   'لِلَّهِ',
@@ -51,38 +53,6 @@ Widget _view({
   );
 }
 
-Color? _inkOf(String word) {
-  for (final e in find.byType(Text).evaluate()) {
-    final w = e.widget as Text;
-    if (w.data == word) return w.style?.color;
-  }
-  return null;
-}
-
-/// Background washes painted behind words.
-Set<Color> _washes() => {
-      for (final e in find.byType(Container).evaluate())
-        if ((e.widget as Container).decoration
-            case BoxDecoration(:final color?))
-          color,
-    };
-
-/// Bottom border colours painted under words (the mistake underline).
-int _underlineCount(Color color) {
-  var n = 0;
-  for (final e in find.byType(Container).evaluate()) {
-    final container = e.widget as Container;
-    final d = container.foregroundDecoration ?? container.decoration;
-    if (d is BoxDecoration && d.border is Border) {
-      if ((d.border! as Border).bottom.color.toARGB32() ==
-          color.withValues(alpha: 0.9).toARGB32()) {
-        n++;
-      }
-    }
-  }
-  return n;
-}
-
 RecitationResult _server(List<bool> correct) => RecitationResult(
       sessionId: 's',
       surahNumber: 1,
@@ -106,24 +76,24 @@ void main() {
           theme: t,
         ));
         for (final w in _words) {
-          expect(_inkOf(w), t.text, reason: '${t.label}: $w');
+          expect(inkOf(tester, w), t.text, reason: '${t.label}: $w');
         }
       }
     });
 
     testWidgets('verdicts recolour in place: green wash, red underline',
         (tester) async {
-      final t = MushafTheme.classic;
+      const t = MushafTheme.classic;
       final statuses = List.filled(_words.length, LiveWordStatus.pending);
       statuses[0] = LiveWordStatus.matched;
       statuses[1] = LiveWordStatus.error;
       await tester.pumpWidget(_view(statuses: statuses, cursor: 2));
-      expect(_inkOf(_words[0]), t.text);
-      expect(_inkOf(_words[1]), t.mismatchInk);
-      expect(_underlineCount(t.mismatchInk), 1);
-      expect(_washes(), containsAll([t.correctTint, t.activeTint]));
+      expect(inkOf(tester, _words[0]), t.text);
+      expect(inkOf(tester, _words[1]), t.mismatchInk);
+      expect(underlineCount(tester, t.mismatchInk), 1);
+      expect(washes(tester), containsAll([t.correctTint, t.activeTint]));
       for (var i = 3; i < _words.length; i++) {
-        expect(_inkOf(_words[i]), t.text);
+        expect(inkOf(tester, _words[i]), t.text);
       }
     });
   });
@@ -131,7 +101,7 @@ void main() {
   group('Hifz mode — unsaid words hidden, layout preserved', () {
     testWidgets('unspoken + active words are transparent; medallions visible',
         (tester) async {
-      final t = MushafTheme.classic;
+      const t = MushafTheme.classic;
       final statuses = List.filled(_words.length, LiveWordStatus.pending);
       statuses[0] = LiveWordStatus.matched;
       statuses[1] = LiveWordStatus.error;
@@ -143,17 +113,20 @@ void main() {
         labels: const ['1'],
       ));
       // Confirmed word: solid ink with the green wash.
-      expect(_inkOf(_words[0]), t.text);
-      expect(_washes(), contains(t.correctTint));
+      expect(inkOf(tester, _words[0]), t.text);
+      expect(washes(tester), contains(t.correctTint));
       // Skipped word: revealed in red with an underline.
-      expect(_inkOf(_words[1]), t.mismatchInk);
-      expect(_underlineCount(t.mismatchInk), 1);
-      // Active and upcoming words: fully transparent.
+      expect(inkOf(tester, _words[1]), t.mismatchInk);
+      expect(underlineCount(tester, t.mismatchInk), 1);
+      // Active and upcoming words: fully transparent, and nothing (glow,
+      // tajweed colour) traces their glyphs.
       for (var i = 2; i < _words.length; i++) {
-        expect(_inkOf(_words[i])!.a, 0, reason: _words[i]);
+        expect(inkOf(tester, _words[i])!.a, 0, reason: _words[i]);
+        expect(spanOf(tester, _words[i])!.style?.shadows, isNull,
+            reason: 'a glyph glow would reveal ${_words[i]}');
       }
       // The ayah medallion stays visible to guide verse position.
-      expect(_inkOf('١'), t.accent);
+      expect(inkOf(tester, ayahMarkerText('1')), t.accent);
     });
 
     testWidgets('revealing a word never moves any word on the page',
@@ -168,7 +141,7 @@ void main() {
           cursor: revealed,
           hideUnspoken: hide,
         ));
-        return [for (final w in _words) tester.getRect(find.text(w))];
+        return [for (final w in _words) rectOf(tester, w)];
       }
 
       final tilawat = await layout(false, 0);
@@ -193,10 +166,10 @@ void main() {
       expect(view.hideUnspoken, isTrue);
       // Every Al-Fatiha word is laid out but invisible; medallions are not.
       for (final w in view.words) {
-        expect(_inkOf(w)!.a, 0, reason: w);
+        expect(inkOf(tester, w)!.a, 0, reason: w);
       }
-      expect(_inkOf('٧'), isNot(null));
-      expect(_inkOf('٧')!.a, greaterThan(0));
+      expect(inkOf(tester, ayahMarkerText('7')), isNot(null));
+      expect(inkOf(tester, ayahMarkerText('7'))!.a, greaterThan(0));
 
       // The Hifz entry has no switch into the separate Tilawat section.
       expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
@@ -287,7 +260,7 @@ void main() {
   group('Bug D — review renders on the Mushaf page', () {
     testWidgets('mistake is red + underlined; unreached stays ghost, no red',
         (tester) async {
-      final t = MushafTheme.classic;
+      const t = MushafTheme.classic;
       final statuses = List.filled(_words.length, LiveWordStatus.pending);
       statuses[0] = LiveWordStatus.matched;
       statuses[1] = LiveWordStatus.error;
@@ -297,28 +270,23 @@ void main() {
       await tester
           .pumpWidget(_view(statuses: statuses, cursor: 3, reviewMode: true));
 
-      expect(_inkOf(_words[0]), t.text);
-      expect(_inkOf(_words[1]), t.mismatchInk);
-      expect(_inkOf(_words[2]), t.text);
+      expect(inkOf(tester, _words[0]), t.text);
+      expect(inkOf(tester, _words[1]), t.mismatchInk);
+      expect(inkOf(tester, _words[2]), t.text);
       for (var i = 3; i < _words.length; i++) {
-        expect(_inkOf(_words[i]), t.ghostInk, reason: _words[i]);
+        expect(inkOf(tester, _words[i]), t.ghostInk, reason: _words[i]);
       }
-      expect(_underlineCount(t.mismatchInk), 1);
+      expect(underlineCount(tester, t.mismatchInk), 1);
     });
 
     testWidgets('review has no active cursor and no green wash',
         (tester) async {
-      final t = MushafTheme.classic;
+      const t = MushafTheme.classic;
       final statuses = List.filled(_words.length, LiveWordStatus.matched);
       await tester.pumpWidget(
           _view(statuses: statuses, cursor: _words.length, reviewMode: true));
-      for (final e in find.byType(Container).evaluate()) {
-        final d = (e.widget as Container).decoration;
-        if (d is BoxDecoration) {
-          expect(d.color, isNot(t.correctTint));
-          expect(d.color, isNot(t.activeTint));
-        }
-      }
+      expect(washes(tester), isNot(contains(t.correctTint)));
+      expect(washes(tester), isNot(contains(t.activeTint)));
     });
 
     testWidgets('tapping a mistake reports its index', (tester) async {
@@ -331,7 +299,10 @@ void main() {
         reviewMode: true,
         onMistakeTap: (i) => tapped = i,
       ));
-      await tester.tap(find.text(_words[4]));
+      await tapWord(tester, _words[4]);
+      expect(tapped, 4);
+      // Tapping a correct word is not a mistake tap.
+      await tapWord(tester, _words[3]);
       expect(tapped, 4);
     });
   });
@@ -349,8 +320,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
-      final lastMarker = find.text('٧');
-      expect(lastMarker, findsOneWidget);
+      final lastMarker = ayahMarkerText('7');
+      expect(countOf(tester, lastMarker), 1);
 
       // Scroll the page to its end, as a reciter would near the last ayah.
       final scrollable = find.byType(Scrollable).first;
@@ -359,7 +330,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final frame = tester.getRect(find.byType(MushafPageFrame));
-      final marker = tester.getRect(lastMarker);
+      final marker = rectOf(tester, lastMarker);
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
       // The last ayah is inside the page border...
       expect(frame.contains(marker.topLeft), isTrue);

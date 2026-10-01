@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/data/models/recitation_stream_event.dart';
-import '../lib/data/models/word_model.dart';
-import '../lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
-import '../lib/features/recitation/presentation/mushaf/mushaf_theme.dart';
-import '../lib/features/recitation/presentation/pages/live_recitation_page.dart';
-import '../lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+import 'package:qari/core/theme/app_theme.dart';
+import 'package:qari/data/models/recitation_stream_event.dart';
+import 'package:qari/data/models/word_model.dart';
+import 'package:qari/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
+import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
+import 'package:qari/features/recitation/presentation/pages/live_recitation_page.dart';
+import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+
+import 'mushaf_text_helpers.dart';
 
 void main() {
   group('RecitationStreamEvent parsing', () {
@@ -135,22 +138,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('بسم'), findsOneWidget);
-    expect(find.text('الله'), findsOneWidget);
-    // Ghunnah colouring applied → at least one per-letter TextSpan carries a
-    // non-null (rule) colour, proving the word is painted per-letter by rule.
-    final richTexts = tester.widgetList<RichText>(find.byType(RichText));
-    bool hasColouredSpan = false;
-    void visit(InlineSpan span) {
-      if (span is TextSpan && span.style?.color != null) hasColouredSpan = true;
-      final kids = span is TextSpan ? span.children : null;
-      if (kids != null) {
-        for (final k in kids) visit(k);
-      }
-    }
-
-    for (final rt in richTexts) visit(rt.text);
-    expect(hasColouredSpan, isTrue);
+    expect(countOf(tester, 'بسم'), 1);
+    expect(countOf(tester, 'الله'), 1);
+    // Ghunnah colouring applied → the word is painted per-letter by rule: its
+    // letter runs carry the ghunnah colour instead of the plain book ink.
+    final ghunnah = AppTheme.getTajweedColor('ghunnah');
+    final word = spanOf(tester, 'الله')!;
+    final runs = word.children!.whereType<TextSpan>().toList();
+    expect(runs, isNotEmpty);
+    expect(runs.map((r) => r.style?.color), contains(ghunnah));
+    // The plain word is a single run in book ink.
+    expect(spanOf(tester, 'بسم')!.children, isNull);
+    expect(inkOf(tester, 'بسم'), MushafTheme.classic.text);
   });
 
   testWidgets('MushafRevealView starts blank (no words, no dots)',
@@ -165,8 +164,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     // No revealed words rendered.
-    expect(find.text('بسم'), findsNothing);
-    expect(find.text('الله'), findsNothing);
+    expect(mushafParagraphElements(tester), isEmpty);
+    expect(countOf(tester, 'بسم'), 0);
   });
 
   testWidgets('MushafRevealView reveals words + inline ayah marker',
@@ -191,14 +190,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // All revealed words appear as continuous Arabic text.
-    expect(find.text('بسم'), findsOneWidget);
-    expect(find.text('الله'), findsOneWidget);
-    expect(find.text('الرحمن'), findsOneWidget);
+    // All revealed words appear as ONE continuous justified Arabic paragraph.
+    expect(mushafUnitTexts(tester),
+        ['بسم', 'الله', ayahMarkerText('2'), 'الرحمن']);
+    final paragraph = mushafParagraphElements(tester).single.widget as RichText;
+    expect(paragraph.text.toPlainText(), 'بسم الله ٢ الرحمن');
+    expect(paragraph.textAlign, TextAlign.justify);
 
-    // Inline end-of-ayah medallion (the Hafs font draws the Arabic-Indic
-    // verse number as the ornament) appears between ayahs.
-    expect(find.text('٢'), findsOneWidget);
+    // Inline end-of-ayah medallion (the Arabic-Indic verse number, which the
+    // Hafs font draws as the ornament) sits between the ayahs.
+    expect(countOf(tester, ayahMarkerText('2')), 1);
   });
 
   testWidgets('MushafRevealView tints mispronounced words', (tester) async {
@@ -217,8 +218,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('بسم'), findsOneWidget);
-    // The mispronounced word is still revealed (not hidden).
-    expect(find.text('السلام'), findsOneWidget);
+    expect(countOf(tester, 'بسم'), 1);
+    // The mispronounced word is still revealed (not hidden). With the cursor
+    // still on word 0 it stays neutral ink: red is only allowed behind the
+    // cursor (the red-wall guard).
+    expect(countOf(tester, 'السلام'), 1);
+    expect(inkOf(tester, 'السلام'), MushafTheme.classic.text);
   });
 }

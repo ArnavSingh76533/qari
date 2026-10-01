@@ -14,21 +14,21 @@ import 'package:qari/features/recitation/presentation/pages/live_recitation_page
 import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'mushaf_text_helpers.dart';
+
 void reportPageGeometry(WidgetTester tester) {
   if (!const bool.fromEnvironment('CAPTURE_QURAN_UI')) return;
   final finder = find.byType(MushafRevealView);
   final view = tester.widget<MushafRevealView>(finder);
-  final wordFinder =
-      find.descendant(of: finder, matching: find.text(view.words.first)).first;
-  final word = tester.widget<Text>(wordFinder);
-  final context = tester.element(wordFinder);
+  final paragraph = mushafParagraphElements(tester).first.widget as RichText;
+  final context = mushafParagraphElements(tester).first;
   final painter = TextPainter(
-    text: TextSpan(text: view.words.first, style: word.style),
+    text: TextSpan(text: view.words.first, style: paragraph.text.style),
     textDirection: TextDirection.rtl,
     textScaler: MediaQuery.textScalerOf(context),
   )..layout();
   debugPrint(
-      'Quran geometry: paper=${view.minimumHeight}, flow=${tester.getSize(finder)}, font=${word.style?.fontSize}, word=${tester.getSize(wordFinder)}, measured=${painter.size}, blocks=${view.blocksBefore.entries.map((e) => '${e.key}:${tester.getSize(find.byWidget(e.value)).height}').join(',')}');
+      'Quran geometry: paper=${view.minimumHeight}, flow=${tester.getSize(finder)}, font=${mushafFontSize(tester)}, lineHeight=${paragraph.text.style?.height}, word=${rectOf(tester, view.words.first).size}, measured=${painter.size}, blocks=${view.blocksBefore.entries.map((e) => '${e.key}:${tester.getSize(find.byWidget(e.value)).height}').join(',')}');
   painter.dispose();
 }
 
@@ -129,10 +129,10 @@ void main() {
       expect(page.height, greaterThan(size.height * .70),
           reason: 'Quran must fill the viewport instead of a short card');
       expect(page.bottom, closeTo(bar.top, 18));
-      expect(
-          tester.getRect(find.text('٧')).bottom, greaterThan(page.bottom - 80),
+      final lastMarker = rectOf(tester, ayahMarkerText('7'));
+      expect(lastMarker.bottom, greaterThan(page.bottom - 80),
           reason: 'Quran lines should use the whole sheet');
-      expect(tester.getRect(find.text('٧')).bottom, lessThanOrEqualTo(bar.top));
+      expect(lastMarker.bottom, lessThanOrEqualTo(bar.top));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       expect(position.maxScrollExtent, lessThanOrEqualTo(2),
@@ -202,7 +202,7 @@ void main() {
       expect(find.textContaining('Page ${target.$1} |'), findsOneWidget);
       final page = tester.getRect(find.byType(MushafPageFrame));
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
-      final marker = tester.getRect(find.text(target.$4).last);
+      final marker = rectOf(tester, target.$4, last: true);
       expect(marker.bottom, lessThanOrEqualTo(bar.top));
       expect(page.bottom, lessThanOrEqualTo(bar.top));
       final position =
@@ -232,7 +232,7 @@ void main() {
             .widget<MushafRevealView>(find.byType(MushafRevealView))
             .tajweedEnabled,
         isTrue);
-    final before = tester.getRect(find.text('٤٠').last);
+    final before = rectOf(tester, ayahMarkerText('40'), last: true);
     await tester.tap(find.byTooltip('Mushaf appearance'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
@@ -244,7 +244,7 @@ void main() {
             .widget<MushafRevealView>(find.byType(MushafRevealView))
             .tajweedEnabled,
         isFalse);
-    expect(tester.getRect(find.text('٤٠').last), before,
+    expect(rectOf(tester, ayahMarkerText('40'), last: true), before,
         reason: 'colour changes must preserve the Quran word layout');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -303,23 +303,14 @@ void main() {
           tester.widget<MushafRevealView>(find.byType(MushafRevealView));
       expect(reveal.tajweedEnabled, isTrue,
           reason: 'page $page restores Tajweed');
-      final marker = find
-          .descendant(
-            of: find.byType(MushafRevealView),
-            matching: find.text(toArabicIndicDigits(reveal.ayahLabels.last)),
-          )
-          .last;
       final controls = tester.getRect(find.byType(FloatingRecitationBar));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
-      final lastBottom = tester.getRect(marker).bottom;
+      final lastBottom =
+          rectOf(tester, ayahMarkerText(reveal.ayahLabels.last), last: true)
+              .bottom;
       if (lastBottom > controls.top || position.maxScrollExtent > 2) {
-        final first = find
-            .descendant(
-                of: find.byType(MushafRevealView),
-                matching: find.text(reveal.words.first))
-            .first;
-        final font = tester.widget<Text>(first).style?.fontSize;
+        final font = mushafFontSize(tester);
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
       }

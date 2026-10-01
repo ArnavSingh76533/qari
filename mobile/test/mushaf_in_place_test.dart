@@ -4,6 +4,8 @@ import 'package:qari/data/models/recitation_stream_event.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'mushaf_text_helpers.dart';
+
 /// Mirrors the page's prime() step: the full target is laid out up front with
 /// every word pending (renders as neutral `unspoken`).
 Widget prime({
@@ -33,7 +35,8 @@ void main() {
   // Al-Fatiha 1:1 with the Uthmani text_with_tashkeel from the backend.
   const fatiha = ['بِسْمِ', 'ٱللَّهِ', 'ٱلرَّحْمَـٰنِ', 'ٱلرَّحِيمِ'];
 
-  testWidgets('REQ 1: full text is visible BEFORE any word event', (tester) async {
+  testWidgets('REQ 1: full text is visible BEFORE any word event',
+      (tester) async {
     await tester.pumpWidget(prime(
       words: fatiha,
       ayahBoundaries: const [3],
@@ -41,7 +44,7 @@ void main() {
     ));
     // Every word is on screen from word one - no blank canvas, no hint text.
     for (final w in fatiha) {
-      expect(find.text(w), findsOneWidget, reason: 'missing $w');
+      expect(countOf(tester, w), 1, reason: 'missing $w');
     }
     expect(find.textContaining('Start reciting'), findsNothing);
   });
@@ -55,18 +58,48 @@ void main() {
     // Fatha, kasra, shaddah, dagger alif, sukun must all survive to the screen.
     // U+064E fatha, U+0650 kasra, U+0651 shaddah, U+0670 dagger alif,
     // U+0652 sukun, U+0653.. maddah.
-    const diacritics = [0x064B, 0x064C, 0x064D, 0x064E, 0x064F, 0x0650,
-      0x0651, 0x0652, 0x0653, 0x0670];
+    const diacritics = [
+      0x064B,
+      0x064C,
+      0x064D,
+      0x064E,
+      0x064F,
+      0x0650,
+      0x0651,
+      0x0652,
+      0x0653,
+      0x0670
+    ];
     var total = 0;
     for (final w in fatiha) {
-      final text = tester.widget<Text>(find.text(w));
-      final rendered = text.data!;
+      final rendered = spanOf(tester, w)!.toPlainText();
       for (final c in rendered.codeUnits) {
         if (diacritics.contains(c)) total++;
       }
     }
     expect(total, greaterThanOrEqualTo(10),
         reason: 'diacritics were stripped somewhere in the pipeline');
+  });
+
+  testWidgets('REQ 1: the page is ONE justified RTL paragraph, not word tiles',
+      (tester) async {
+    await tester.pumpWidget(prime(
+      words: fatiha,
+      ayahBoundaries: const [3],
+      ayahLabels: const ['1'],
+    ));
+    // No per-word widgets, no Wrap, no spacer boxes between words.
+    expect(find.byType(Wrap), findsNothing);
+    final paragraphs = mushafParagraphElements(tester);
+    expect(paragraphs, hasLength(1));
+    final rich = paragraphs.single.widget as RichText;
+    expect(rich.textAlign, TextAlign.justify);
+    expect(rich.textDirection, TextDirection.rtl);
+    expect(rich.text.style?.fontFamily, 'KFGQPCUthmanicHafs');
+    // Words are separated by the font's own single space, nothing else.
+    expect(
+        rich.text.toPlainText(), '${fatiha.join(' ')} ${ayahMarkerText('1')}');
+    expect(rich.text.style?.letterSpacing, 0);
   });
 
   testWidgets('REQ 1: highlighting a word does NOT change the word count',
@@ -80,27 +113,31 @@ void main() {
 
     // Layout must be rock solid: applying verdicts in place must not add,
     // remove or reorder a single word, so the rendered block is identical.
-    final findView = () => tester.getSize(find.byType(MushafRevealView));
+    Size findView() => tester.getSize(find.byType(MushafRevealView));
     final before = findView();
-    final wordsBefore =
-        tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList();
+    final wordsBefore = mushafUnitTexts(tester);
+    final rectsBefore = [for (final w in fatiha) rectOf(tester, w)];
 
     await tester.pumpWidget(prime(
       words: fatiha,
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 1,
-      statuses: const [LiveWordStatus.matched, LiveWordStatus.pending,
-        LiveWordStatus.pending, LiveWordStatus.pending],
+      statuses: const [
+        LiveWordStatus.matched,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending
+      ],
     ));
     await tester.pumpAndSettle();
 
     expect(findView(), before,
         reason: 'page geometry changed when verdicts were applied');
-    final wordsAfter =
-        tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList();
-    expect(wordsAfter, wordsBefore,
+    expect(mushafUnitTexts(tester), wordsBefore,
         reason: 'the set/order of rendered words changed');
+    expect([for (final w in fatiha) rectOf(tester, w)], rectsBefore,
+        reason: 'a word moved when verdicts were applied');
   });
 
   testWidgets('REQ 1: in-place update recolours without swapping text',
@@ -112,11 +149,15 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 0,
-      statuses: const [LiveWordStatus.matched, LiveWordStatus.pending,
-        LiveWordStatus.pending, LiveWordStatus.pending],
+      statuses: const [
+        LiveWordStatus.matched,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending,
+        LiveWordStatus.pending
+      ],
     ));
-    expect(find.text('بِسْمِ'), findsOneWidget);
-    expect(find.text('بسم'), findsNothing,
+    expect(countOf(tester, 'بِسْمِ'), 1);
+    expect(countOf(tester, 'بسم'), 0,
         reason: 'normalized clean_text leaked into the Mushaf view');
   });
 
@@ -128,9 +169,12 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
     ));
-    // The medallion (Arabic-Indic verse number in the Hafs font) is rendered
-    // exactly once, at the ayah end — a stray corpus "١" word would make two.
-    expect(find.text('١'), findsOneWidget);
+    // The medallion (the Arabic-Indic verse number, which the Hafs font draws
+    // as the ornament) is rendered exactly once, at the ayah end — a stray
+    // corpus "١" word would make two.
+    expect(countOf(tester, ayahMarkerText('1')), 1);
+    expect(ayahMarkerText('1'), '١');
+    expect(inkOf(tester, ayahMarkerText('1')), MushafTheme.classic.accent);
   });
 
   testWidgets('REQ: red wall guard still holds on a pre-rendered page',
@@ -142,17 +186,12 @@ void main() {
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
       cursor: 0,
-      statuses: List<LiveWordStatus>.filled(
-          4, LiveWordStatus.error),
+      statuses: List<LiveWordStatus>.filled(4, LiveWordStatus.error),
     ));
-    final err = Theme.of(tester.element(find.byType(Wrap).first)).colorScheme.error;
-    final reds = tester
-        .widgetList<Container>(find.byType(Container))
-        .where((c) {
-      final d = c.decoration;
-      if (d is! BoxDecoration) return false;
-      return d.color == err || d.border?.bottom.color == err;
-    });
-    expect(reds, isEmpty, reason: 'red appeared ahead of the cursor');
+    final err = MushafTheme.classic.mismatchInk;
+    expect(wordsInColor(tester, err), isEmpty,
+        reason: 'red appeared ahead of the cursor');
+    expect(underlineCount(tester, err), 0);
+    expect(washes(tester), isNot(contains(err)));
   });
 }
