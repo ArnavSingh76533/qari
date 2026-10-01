@@ -100,7 +100,8 @@ class MushafRevealView extends StatelessWidget {
   /// Actual breaks use continuous paragraph shaping, not fixed word rows.
   final List<int> lineEnds;
 
-  static final Map<(String, TextScaler), (double, double, int)> _layoutCache = {};
+  static final Map<(String, TextScaler), (double, double, int)> _layoutCache =
+      {};
 
   const MushafRevealView({
     super.key,
@@ -138,7 +139,8 @@ class MushafRevealView extends StatelessWidget {
       final scaler = MediaQuery.textScalerOf(context);
       final layout = _fitPage(context, width, scaler);
       final content = _compose(context, width, layout.$1, layout.$2);
-      final painter = content.measure(width, TextScaler.noScaling, maxLines: layout.$3);
+      final painter =
+          content.measure(width, TextScaler.noScaling, maxLines: layout.$3);
       final rects = <Rect>[];
       for (final range in content.ranges) {
         final boxes = painter.getBoxesForSelection(
@@ -146,7 +148,9 @@ class MushafRevealView extends StatelessWidget {
         );
         rects.add(boxes.isEmpty
             ? Rect.zero
-            : boxes.map((b) => b.toRect()).reduce((a, b) => a.expandToInclude(b)));
+            : boxes
+                .map((b) => b.toRect())
+                .reduce((a, b) => a.expandToInclude(b)));
       }
       painter.dispose();
       final paragraph = MushafParagraph(
@@ -175,14 +179,20 @@ class MushafRevealView extends StatelessWidget {
                       onTap: () => tap(i),
                     ),
                   ),
-            if (!reviewMode && cursorKey != null && cursor >= 0 && cursor < rects.length)
+            if (!reviewMode &&
+                cursorKey != null &&
+                cursor >= 0 &&
+                cursor < rects.length)
               Positioned.fromRect(
                 rect: rects[cursor],
                 child: IgnorePointer(child: SizedBox(key: cursorKey)),
               ),
-            if (caretKey != null && (cursorKey == null || cursor < 0 || cursor >= words.length))
-              Positioned(bottom: 0, left: 0,
-                child: SizedBox(key: caretKey, width: 0, height: 0)),
+            if (caretKey != null &&
+                (cursorKey == null || cursor < 0 || cursor >= words.length))
+              Positioned(
+                  bottom: 0,
+                  left: 0,
+                  child: SizedBox(key: caretKey, width: 0, height: 0)),
           ],
         ),
       );
@@ -190,19 +200,26 @@ class MushafRevealView extends StatelessWidget {
   }
 
   LiveWordViewState _state(int index) {
-    final status = index < statuses.length ? statuses[index] : LiveWordStatus.pending;
+    final status =
+        index < statuses.length ? statuses[index] : LiveWordStatus.pending;
     return reviewMode
-        ? resolveReviewWordViewState(serverStatus: status, index: index, reach: cursor)
-        : resolveWordViewState(serverStatus: status, index: index, cursor: cursor);
+        ? resolveReviewWordViewState(
+            serverStatus: status, index: index, reach: cursor)
+        : resolveWordViewState(
+            serverStatus: status, index: index, cursor: cursor);
   }
 
   // Fit the same shaped paragraph that RichText paints. Printed page metadata
   // supplies the line budget; words wrap through the paragraph's RTL engine,
   // never through independent centered rows or manually expanded word boxes.
-  (double, double, int) _fitPage(BuildContext context, double width, TextScaler scaler) {
-    final cacheKey = ('${words.join(' ')}|${ayahBoundaries.join(',')}|${ayahLabels.join(',')}|'
-        '${blocksBefore.keys.join(',')}|${blockHeights.entries.join(',')}|'
-        '$width|$minimumHeight|$fontSize|${lineEnds.length}', scaler);
+  (double, double, int) _fitPage(
+      BuildContext context, double width, TextScaler scaler) {
+    final cacheKey = (
+      '${words.join(' ')}|${ayahBoundaries.join(',')}|${ayahLabels.join(',')}|'
+          '${blocksBefore.keys.join(',')}|${blockHeights.entries.join(',')}|'
+          '$width|$minimumHeight|$fontSize|${lineEnds.length}',
+      scaler
+    );
     final cached = _layoutCache[cacheKey];
     if (cached != null) return cached;
     const baseHeight = 1.65;
@@ -213,9 +230,10 @@ class MushafRevealView extends StatelessWidget {
       // The final, zero-height placeholder creates a soft break after the
       // last real line. Exclude that placeholder line from the visible page.
       final count = lines.length > 1 ? lines.length - 1 : 1;
-      final last = lines[count - 1];
-      final bottom = last.baseline + last.descent;
       painter.dispose();
+      final visible = content.measure(width, TextScaler.noScaling, maxLines: count);
+      final bottom = visible.height;
+      visible.dispose();
       return (bottom, count);
     }
 
@@ -223,11 +241,13 @@ class MushafRevealView extends StatelessWidget {
     if (minimumHeight > 0) {
       var low = 1.0;
       var high = 40.0;
-      final lineBudget = lineEnds.isEmpty ? null : lineEnds.length + blocksBefore.length;
+      final lineBudget =
+          lineEnds.isEmpty ? null : lineEnds.length + blocksBefore.length;
       for (var i = 0; i < 14; i++) {
         final mid = (low + high) / 2;
         final result = measure(mid, baseHeight);
-        if (result.$1 <= minimumHeight && (lineBudget == null || result.$2 <= lineBudget)) {
+        if (result.$1 <= minimumHeight &&
+            (lineBudget == null || result.$2 <= lineBudget)) {
           low = mid;
         } else {
           high = mid;
@@ -257,8 +277,9 @@ class MushafRevealView extends StatelessWidget {
     return fitted;
   }
 
-  _ParagraphContent _compose(BuildContext context, double width, double size,
-      double leading, {bool decorate = true}) {
+  _ParagraphContent _compose(
+      BuildContext context, double width, double size, double leading,
+      {bool decorate = true}) {
     // Scale glyphs once, then lay out widgets and text in the same dp space.
     // RichText otherwise automatically scales WidgetSpans a second time.
     size = MediaQuery.textScalerOf(context).scale(size);
@@ -271,16 +292,22 @@ class MushafRevealView extends StatelessWidget {
       children.add(TextSpan(text: value));
       offset += value.length;
     }
+
     void placeholder(Widget child, Size size, {double? baseline}) {
-      final alignment = baseline == null ? PlaceholderAlignment.top : PlaceholderAlignment.baseline;
+      final alignment = baseline == null
+          ? PlaceholderAlignment.top
+          : PlaceholderAlignment.baseline;
       children.add(WidgetSpan(
         alignment: alignment,
         baseline: baseline == null ? null : TextBaseline.alphabetic,
-        child: MediaQuery.withNoTextScaling(child: SizedBox.fromSize(size: size, child: child)),
+        child: MediaQuery.withNoTextScaling(
+            child: SizedBox.fromSize(size: size, child: child)),
       ));
-      dimensions.add(PlaceholderDimensions(size: size, alignment: alignment,
-        baseline: baseline == null ? null : TextBaseline.alphabetic,
-        baselineOffset: baseline));
+      dimensions.add(PlaceholderDimensions(
+          size: size,
+          alignment: alignment,
+          baseline: baseline == null ? null : TextBaseline.alphabetic,
+          baselineOffset: baseline));
       offset++;
     }
 
@@ -297,20 +324,33 @@ class MushafRevealView extends StatelessWidget {
       offset += words[i].length;
       final label = _labelForBoundary(i);
       if (label != null) {
-        // Word joiner prevents a line break between the verse's final word
-        // and its marker. The 4dp marker inset is never justified whitespace.
-        text('\u2060');
+        final digits = toArabicIndicDigits(label);
+        // Skia treats a WidgetSpan as a separate breakable word even after a
+        // word joiner. Reserve the medallion as joined text, then paint its
+        // inline widget over that reservation. The marker cannot orphan and
+        // the body words remain TextSpans in the same shaped paragraph.
+        final reservation = '\u2060$digits\u200f';
+        children.add(TextSpan(text: reservation, semanticsLabel: '',
+          style: const TextStyle(color: Colors.transparent)));
+        offset += reservation.length;
         final style = _arabicStyle(size, mushaf.accent, 1.65);
-        final marker = TextPainter(text: TextSpan(text: toArabicIndicDigits(label), style: style),
-          textDirection: TextDirection.rtl)..layout();
-        final markerSize = Size(marker.width + 4, marker.height);
+        final marker = TextPainter(
+          text: TextSpan(text: digits, style: style),
+          textDirection: TextDirection.rtl,
+        )..layout();
+        final markerWidth = marker.width;
+        final markerHeight = marker.height;
         final baseline = marker.computeDistanceToActualBaseline(TextBaseline.alphabetic);
         marker.dispose();
         placeholder(
-          Semantics(label: 'End of ayah $label', excludeSemantics: true,
-            child: Padding(padding: const EdgeInsets.only(right: 4),
-              child: Text(toArabicIndicDigits(label), style: style, softWrap: false))),
-          markerSize, baseline: baseline,
+          OverflowBox(
+            alignment: Alignment.centerLeft,
+            minWidth: markerWidth, maxWidth: markerWidth,
+            minHeight: markerHeight, maxHeight: markerHeight,
+            child: Semantics(label: 'End of ayah $label', excludeSemantics: true,
+              child: Text(digits, style: style, softWrap: false)),
+          ),
+          Size(0, markerHeight), baseline: baseline,
         );
       }
     }
@@ -318,10 +358,14 @@ class MushafRevealView extends StatelessWidget {
     // placeholder soft-wraps the last real line as well; maxLines excludes
     // the placeholder's own line without truncating any Quran text.
     text(' ');
-    placeholder(const ExcludeSemantics(child: SizedBox.shrink()), Size(width, 0));
+    placeholder(
+        const ExcludeSemantics(child: SizedBox.shrink()), Size(width, 0));
     return _ParagraphContent(
-      TextSpan(style: _arabicStyle(size, mushaf.text, leading), children: children),
-      dimensions, ranges, wordSpans,
+      TextSpan(
+          style: _arabicStyle(size, mushaf.text, leading), children: children),
+      dimensions,
+      ranges,
+      wordSpans,
     );
   }
 
@@ -331,26 +375,44 @@ class MushafRevealView extends StatelessWidget {
     final unspoken = state == LiveWordViewState.unspoken;
     final active = state == LiveWordViewState.active;
     final hidden = !reviewMode && hideUnspoken && (unspoken || active);
-    final ink = mistake ? mushaf.mismatchInk
-        : hidden ? mushaf.text.withValues(alpha: 0)
-        : reviewMode && unspoken ? mushaf.ghostInk : mushaf.text;
+    final ink = mistake
+        ? mushaf.mismatchInk
+        : hidden
+            ? mushaf.text.withValues(alpha: 0)
+            : reviewMode && unspoken
+                ? mushaf.ghostInk
+                : mushaf.text;
     final style = TextStyle(
       color: decorate ? ink : mushaf.text,
-      backgroundColor: !decorate || hidden || reviewMode ? null
-          : active ? mushaf.activeTint
-          : state == LiveWordViewState.correct ? mushaf.correctTint : null,
-      decoration: decorate && mistake ? TextDecoration.underline : TextDecoration.none,
+      backgroundColor: !decorate || hidden || reviewMode
+          ? null
+          : active
+              ? mushaf.activeTint
+              : state == LiveWordViewState.correct
+                  ? mushaf.correctTint
+                  : null,
+      decoration:
+          decorate && mistake ? TextDecoration.underline : TextDecoration.none,
       decorationColor: mushaf.mismatchInk.withValues(alpha: 0.9),
       decorationThickness: 2,
     );
-    final spans = tajweedEnabled && index < tajweedSpans.length ? tajweedSpans[index] : null;
+    final spans = tajweedEnabled && index < tajweedSpans.length
+        ? tajweedSpans[index]
+        : null;
     final value = words[index];
-    if (!decorate || mistake || hidden || (reviewMode && unspoken) || spans == null || spans.isEmpty) {
+    if (!decorate ||
+        mistake ||
+        hidden ||
+        (reviewMode && unspoken) ||
+        spans == null ||
+        spans.isEmpty) {
       return TextSpan(text: value, style: style);
     }
     final ruleAt = List<String?>.filled(value.length, null);
     for (final span in spans) {
-      for (var i = span.start.clamp(0, value.length); i < span.end.clamp(0, value.length); i++) {
+      for (var i = span.start.clamp(0, value.length);
+          i < span.end.clamp(0, value.length);
+          i++) {
         ruleAt[i] = span.rule;
       }
     }
@@ -359,10 +421,16 @@ class MushafRevealView extends StatelessWidget {
     while (i < value.length) {
       final rule = ruleAt[i];
       var end = i + 1;
-      while (end < value.length && ruleAt[end] == rule) { end++; }
-      children.add(TextSpan(text: value.substring(i, end), style: TextStyle(
-        color: rule == null ? null : AppTheme.ensureContrast(
-          AppTheme.getTajweedColor(rule), Theme.of(context).brightness))));
+      while (end < value.length && ruleAt[end] == rule) {
+        end++;
+      }
+      children.add(TextSpan(
+          text: value.substring(i, end),
+          style: TextStyle(
+              color: rule == null
+                  ? null
+                  : AppTheme.ensureContrast(AppTheme.getTajweedColor(rule),
+                      Theme.of(context).brightness))));
       i = end;
     }
     return TextSpan(style: style, children: children);
@@ -376,8 +444,13 @@ class MushafParagraph extends RichText {
   final List<TextRange> wordRanges;
   final List<TextSpan> wordSpans;
 
-  MushafParagraph({super.key, required this.wordRanges, required this.wordSpans,
-    required super.text, required super.textScaler, required super.maxLines})
+  MushafParagraph(
+      {super.key,
+      required this.wordRanges,
+      required this.wordSpans,
+      required super.text,
+      required super.textScaler,
+      required super.maxLines})
       : super(textAlign: TextAlign.justify, textDirection: TextDirection.rtl);
 }
 
@@ -388,10 +461,16 @@ class _ParagraphContent {
   final List<TextSpan> words;
   const _ParagraphContent(this.span, this.dimensions, this.ranges, this.words);
 
-  TextPainter measure(double width, TextScaler scaler, {int? maxLines}) => TextPainter(
-    text: span, textAlign: TextAlign.justify, textDirection: TextDirection.rtl,
-    textScaler: scaler, maxLines: maxLines,
-  )..setPlaceholderDimensions(dimensions)..layout(minWidth: width, maxWidth: width);
+  TextPainter measure(double width, TextScaler scaler, {int? maxLines}) =>
+      TextPainter(
+        text: span,
+        textAlign: TextAlign.justify,
+        textDirection: TextDirection.rtl,
+        textScaler: scaler,
+        maxLines: maxLines,
+      )
+        ..setPlaceholderDimensions(dimensions)
+        ..layout(minWidth: width, maxWidth: width);
 }
 
 TextStyle _arabicStyle(double size, Color? color, double height) =>

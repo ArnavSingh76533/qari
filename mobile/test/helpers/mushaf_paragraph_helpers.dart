@@ -17,7 +17,7 @@ List<TextSpan> mushafWordSpans() {
   final spans = <TextSpan>[];
   for (final paragraph in paragraphs) {
     expect(paragraph.wordRanges.length, paragraph.wordSpans.length);
-    final text = paragraph.text.toPlainText();
+    final text = paragraph.text.toPlainText(includeSemanticsLabels: false);
     for (var i = 0; i < paragraph.wordRanges.length; i++) {
       final range = paragraph.wordRanges[i];
       expect(range.isValid, isTrue);
@@ -110,34 +110,25 @@ List<Rect> mushafTextRows(WidgetTester tester) {
       rows[row] = rows[row].expandToInclude(word);
     }
   }
-  final paragraphs = find.byType(MushafParagraph);
-  final count = paragraphs.evaluate().length;
-  for (var i = 0; i < count; i++) {
-    final finder = paragraphs.at(i);
-    final paragraph = tester.widget<MushafParagraph>(finder);
-    final render = tester.renderObject<RenderParagraph>(finder);
-    final origin = render.localToGlobal(Offset.zero);
-    final textLength = paragraph.text.toPlainText().length;
-    final boxes = render.getBoxesForSelection(
-      TextSelection(baseOffset: 0, extentOffset: textLength - 2),
-    );
-    for (final box in boxes) {
-      final rect = box.toRect().shift(origin);
-      // Markers use their own baseline/height. Match the row with the
-      // greatest vertical overlap instead of comparing marker centres.
-      var best = -1;
-      var overlap = 0.0;
-      for (var j = 0; j < rows.length; j++) {
-        final intersection = rows[j].intersect(
-          Rect.fromLTRB(rows[j].left, rect.top, rows[j].right, rect.bottom),
-        );
-        if (intersection.height > overlap) {
-          overlap = intersection.height;
-          best = j;
-        }
+  // Only visible glyph/marker bounds count. Selecting the whole paragraph
+  // includes trailing soft-break whitespace boxes outside the painted row.
+  for (final element in find.descendant(of: find.byType(MushafParagraph),
+      matching: find.byType(Text)).evaluate()) {
+    final text = element.widget as Text;
+    if (text.data == null || !RegExp(r'^[٠-٩]+$').hasMatch(text.data!)) continue;
+    final rect = tester.getRect(find.byWidget(text));
+    var best = -1;
+    var overlap = 0.0;
+    for (var j = 0; j < rows.length; j++) {
+      final intersection = rows[j].intersect(
+        Rect.fromLTRB(rows[j].left, rect.top, rows[j].right, rect.bottom));
+      if (intersection.height > overlap) {
+        overlap = intersection.height;
+        best = j;
       }
-      if (best >= 0) rows[best] = rows[best].expandToInclude(rect);
     }
+    expect(best, greaterThanOrEqualTo(0), reason: 'marker has no text row');
+    rows[best] = rows[best].expandToInclude(rect);
   }
   rows.sort((a, b) => a.top.compareTo(b.top));
   return rows;

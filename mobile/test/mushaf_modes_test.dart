@@ -322,6 +322,24 @@ void main() {
     });
   });
 
+  testWidgets('review only intercepts taps on mistakes', (tester) async {
+    var pageTaps = 0;
+    int? mistake;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: GestureDetector(
+      onTap: () => pageTaps++,
+      child: MushafRevealView(words: _words,
+        statuses: [LiveWordStatus.error, ...List.filled(_words.length - 1, LiveWordStatus.matched)],
+        cursor: _words.length, reviewMode: true, mushaf: MushafTheme.classic,
+        onMistakeTap: (index) => mistake = index,
+      ),
+    ))));
+    await tester.tapAt(mushafWordRect(tester, 1).center);
+    expect(pageTaps, 1);
+    await tester.tapAt(mushafWordRect(tester, 0).center);
+    expect(mistake, 0);
+    expect(pageTaps, 1);
+  });
+
   group('Bug A — text stays inside the frame, clear of the mic bar', () {
     testWidgets('Al-Fatiha on a phone: no overflow, last ayah above the bar',
         (tester) async {

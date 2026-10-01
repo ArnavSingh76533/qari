@@ -80,7 +80,7 @@ void main() {
 
   testWidgets('an ayah marker wraps with its final word', (tester) async {
     const words = ['ٱلْحَمْدُ', 'لِلَّهِ', 'رَبِّ'];
-    var width = 16.5;
+    var width = -1.0;
     for (final word in words) {
       final painter = TextPainter(
         text: TextSpan(
@@ -166,6 +166,7 @@ void main() {
       (page: 1, surah: 1, ayah: 1, theme: 'classic'),
       (page: 3, surah: 2, ayah: 6, theme: 'night'),
       (page: 6, surah: 2, ayah: 30, theme: 'classic'),
+      (page: 84, surah: 4, ayah: 34, theme: 'classic'),
     ]) {
       testWidgets('page ${target.page} has flush body rows at $size',
           (tester) async {
@@ -173,7 +174,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         SharedPreferences.setMockInitialValues(
-            {'mushaf_theme_id': target.theme});
+            {'mushaf_theme_id': target.theme, 'tajweed_colors_enabled': target.page == 84});
         final preview = GlobalKey();
         await tester.pumpWidget(RepaintBoundary(
           key: preview,
@@ -187,6 +188,19 @@ void main() {
           ),
         ));
         await tester.pumpAndSettle();
+        if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
+          final boundary =
+              preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
+          await tester.runAsync(() async {
+            final image = await boundary.toImage(pixelRatio: 2);
+            final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+            final file = File(
+                'build/review/quran-page${target.page}-${size.width.toInt()}.png');
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes!.buffer.asUint8List());
+            image.dispose();
+          });
+        }
         expect(find.textContaining('Page ${target.page} |'), findsOneWidget);
         final view = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
         expect(mushafWords(), view.words);
@@ -227,19 +241,6 @@ void main() {
           expect(marker.bottom, greaterThan(word.top));
         }
         expect(tester.takeException(), isNull);
-        if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
-          final boundary =
-              preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
-          await tester.runAsync(() async {
-            final image = await boundary.toImage(pixelRatio: 2);
-            final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-            final file = File(
-                'build/review/quran-page${target.page}-${size.width.toInt()}.png');
-            await file.parent.create(recursive: true);
-            await file.writeAsBytes(bytes!.buffer.asUint8List());
-            image.dispose();
-          });
-        }
         await tester.pumpWidget(const SizedBox());
       });
     }

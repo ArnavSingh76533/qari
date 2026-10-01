@@ -3,12 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qari/core/theme/app_theme.dart';
 import 'helpers/mushaf_paragraph_helpers.dart';
 
-import '../lib/data/models/recitation_stream_event.dart';
-import '../lib/data/models/word_model.dart';
-import '../lib/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
-import '../lib/features/recitation/presentation/mushaf/mushaf_theme.dart';
-import '../lib/features/recitation/presentation/pages/live_recitation_page.dart';
-import '../lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+import 'package:qari/data/models/recitation_stream_event.dart';
+import 'package:qari/data/models/word_model.dart';
+import 'package:qari/features/recitation/presentation/mushaf/floating_recitation_bar.dart';
+import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
+import 'package:qari/features/recitation/presentation/pages/live_recitation_page.dart';
+import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
 void main() {
   group('RecitationStreamEvent parsing', () {

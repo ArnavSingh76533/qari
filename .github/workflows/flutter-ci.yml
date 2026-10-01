@@ -75,4 +75,5 @@ jobs:
             mobile/lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart
             mobile/test/mushaf*_test.dart
             mobile/test/full_page_recitation_test.dart
+            mobile/test/live_recitation_test.dart
             mobile/test/helpers/mushaf_paragraph_helpers.dart
