@@ -150,7 +150,7 @@ void main() {
             words: words,
             statuses: const [],
             mushaf: MushafTheme.classic,
-            minimumHeight: 800,
+            minimumHeight: 500,
             lineEnds: const [8],
           ),
         ),
@@ -166,6 +166,8 @@ void main() {
       expect(rect.isEmpty, isFalse);
       expect(rect.left, greaterThanOrEqualTo(paragraph.left - 0.5));
       expect(rect.right, lessThanOrEqualTo(paragraph.right + 0.5));
+      expect(rect.top, greaterThanOrEqualTo(paragraph.top - 0.5));
+      expect(rect.bottom, lessThanOrEqualTo(paragraph.bottom + 0.5));
     }
     expect(mushafTextRows(tester).length, 1,
         reason: 'the one-line budget must retain every word');
@@ -194,12 +196,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('surah openings retain measured heights at large text scale',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LiveRecitationPage(
+      surahNumber: 2, ayahNumber: 1, initialMode: RecitationMode.tilawat)));
+    await tester.pumpAndSettle();
+    final source = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+        child: child!),
+      home: Scaffold(body: SizedBox(width: 360, height: 600,
+        child: SingleChildScrollView(controller: scroll,
+          child: MushafRevealView(words: source.words, statuses: const [],
+            mushaf: source.mushaf, fontSize: source.fontSize, minimumHeight: 500,
+            lineEnds: source.lineEnds, surahEnds: source.surahEnds,
+            ayahBoundaries: source.ayahBoundaries, ayahLabels: source.ayahLabels,
+            blocksBefore: source.blocksBefore, blockHeights: source.blockHeights))))));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull,
+      reason: 'fixed opening heights must not overflow at 2× system text scale');
+    final opening = find.byWidget(source.blocksBefore[0]!);
+    final openingBounds = mushafRect(tester, opening);
+    for (final text in find.descendant(of: opening, matching: find.byType(Text)).evaluate()) {
+      final bounds = mushafRect(tester, find.byWidget(text.widget));
+      expect(bounds.top, greaterThanOrEqualTo(openingBounds.top - 0.5));
+      expect(bounds.bottom, lessThanOrEqualTo(openingBounds.bottom + 0.5));
+    }
+    expect(mushafWords(), source.words);
+    expect(mushafWordRect(tester, 0).top, greaterThanOrEqualTo(openingBounds.bottom));
+    scroll.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    final last = mushafWordRect(tester, source.words.length - 1);
+    expect(last.bottom, lessThanOrEqualTo(600));
+    expect(last.top, greaterThanOrEqualTo(0));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final size in [const Size(360, 740), const Size(430, 932)]) {
     for (final target in [
       (page: 1, surah: 1, ayah: 1, theme: 'classic'),
       (page: 3, surah: 2, ayah: 6, theme: 'night'),
       (page: 6, surah: 2, ayah: 30, theme: 'classic'),
       (page: 84, surah: 4, ayah: 34, theme: 'classic'),
+      (page: 587, surah: 82, ayah: 1, theme: 'classic'),
+      (page: 604, surah: 112, ayah: 1, theme: 'classic'),
     ]) {
       testWidgets('page ${target.page} has natural RTL body spacing at $size',
           (tester) async {
