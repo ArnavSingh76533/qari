@@ -13,7 +13,7 @@ void main() {
         .load();
   });
 
-  testWidgets('Mushaf body retains one natural RTL paragraph on dense lines',
+  testWidgets('body uses the printed word boundaries for separate RTL lines',
       (tester) async {
     final words = List.generate(
         30,
@@ -33,22 +33,40 @@ void main() {
           statuses: const [],
           mushaf: MushafTheme.classic,
           minimumHeight: 500,
-          lineEnds: const [9, 19, 29]),
+          lineEnds: const [4, 14, 29]),
     ))));
     await tester.pumpAndSettle();
     final body = find.byType(MushafRevealView);
     expect(
         find.descendant(of: body, matching: find.byType(Wrap)), findsNothing);
-    final paragraphs = find.descendant(
-        of: body,
-        matching: find.byWidgetPredicate((w) =>
-            w is RichText && w.text.toPlainText().contains('كَفَرُوا۟')));
-    expect(paragraphs, findsOneWidget);
-    final widget = tester.widget<RichText>(paragraphs);
-    expect(widget.textDirection, TextDirection.rtl);
+    expect(mushafWords(), words);
+    final paragraphs = tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
+    expect(paragraphs.length, 3,
+        reason: 'printed line data must define the three shaped lines');
+    expect(paragraphs.map((p) => p.wordSpans.length), [5, 10, 15]);
+    for (final paragraph in paragraphs) {
+      expect(paragraph.textDirection, TextDirection.rtl);
+      expect(paragraph.textAlign, isNot(TextAlign.justify));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('every body line fills both margins without expanded spaces',
+      (tester) async {
+    final words = List.generate(30, (i) =>
+        ['إِنَّ', 'ٱلَّذِينَ', 'كَفَرُوا۟', 'سَوَآءٌ', 'عَلَيْهِمْ'][i % 5]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(
+      width: 320,
+      child: MushafRevealView(words: words, statuses: const [],
+          mushaf: MushafTheme.classic, minimumHeight: 500,
+          lineEnds: const [4, 14, 29]),
+    ))));
+    await tester.pumpAndSettle();
+    final frame = tester.getRect(find.byType(MushafRevealView));
     for (final row in mushafTextRows(tester)) {
-      expect(row.left, greaterThanOrEqualTo(-0.5));
-      expect(row.right, closeTo(320, 1));
+      expect(row.left, closeTo(frame.left, 0.5),
+          reason: 'whole-line fitting must remove the ragged left margin');
+      expect(row.right, closeTo(frame.right, 0.5));
     }
     expectNaturalMushafSpaces(tester, reason: 'dense Mushaf rows');
     expect(tester.takeException(), isNull);
