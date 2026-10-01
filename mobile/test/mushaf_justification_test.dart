@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'helpers/mushaf_paragraph_helpers.dart';
@@ -14,39 +13,7 @@ void main() {
         .load();
   });
 
-  testWidgets('engine justifies the visible final line before a wrap sentinel',
-      (tester) async {
-    const text = 'إِنَّ ٱلَّذِينَ كَفَرُوا۟ سَوَآءٌ عَلَيْهِمْ';
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: SizedBox(
-      width: 320,
-      child: RichText(
-        textDirection: TextDirection.rtl,
-        textAlign: TextAlign.justify,
-        maxLines: 1,
-        text: TextSpan(
-            style: TextStyle(fontFamily: 'KFGQPCUthmanicHafs', fontSize: 20),
-            children: [
-              TextSpan(text: text),
-              TextSpan(text: ' '),
-              WidgetSpan(child: SizedBox(width: 320, height: 0)),
-            ]),
-      ),
-    ))));
-    final paragraph =
-        tester.renderObject<RenderParagraph>(find.byType(RichText).first);
-    final boxes = paragraph.getBoxesForSelection(
-        TextSelection(baseOffset: 0, extentOffset: text.length));
-    debugPrint('final visible line boxes: $boxes');
-    expect(boxes.map((b) => b.left).reduce((a, b) => a < b ? a : b),
-        closeTo(0, 1));
-    expect(boxes.map((b) => b.right).reduce((a, b) => a > b ? a : b),
-        closeTo(320, 1));
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Mushaf body uses one justified RTL paragraph with flush edges',
+  testWidgets('Mushaf body retains one natural RTL paragraph on dense lines',
       (tester) async {
     final words = List.generate(
         30,
@@ -78,12 +45,12 @@ void main() {
             w is RichText && w.text.toPlainText().contains('كَفَرُوا۟')));
     expect(paragraphs, findsOneWidget);
     final widget = tester.widget<RichText>(paragraphs);
-    expect(widget.textAlign, TextAlign.justify);
     expect(widget.textDirection, TextDirection.rtl);
     for (final row in mushafTextRows(tester)) {
-      expect(row.left, closeTo(0, 1));
+      expect(row.left, greaterThanOrEqualTo(-0.5));
       expect(row.right, closeTo(320, 1));
     }
+    expectNaturalMushafSpaces(tester, reason: 'dense Mushaf rows');
     expect(tester.takeException(), isNull);
   });
 }

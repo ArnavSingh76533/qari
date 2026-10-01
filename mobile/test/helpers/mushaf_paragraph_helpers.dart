@@ -134,7 +134,7 @@ List<Rect> mushafWordRects(WidgetTester tester) {
 }
 
 /// Actual body rows, including inline marker boxes and excluding header rows.
-/// Select through the final word/marker, but not the final space + sentinel.
+/// Select the visible word and marker bounds without trailing whitespace.
 List<Rect> mushafTextRows(WidgetTester tester) {
   final rows = <Rect>[];
   for (final word in mushafWordRects(tester)) {

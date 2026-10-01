@@ -16,16 +16,17 @@ import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view
 
 import 'helpers/mushaf_paragraph_helpers.dart';
 
-void expectFlushRows(WidgetTester tester, {required String reason}) {
+void expectRtlRows(WidgetTester tester, {required String reason}) {
   final paragraph = tester.getRect(find.byType(MushafParagraph).first);
   final rows = mushafTextRows(tester);
   expect(rows, isNotEmpty, reason: reason);
   for (var i = 0; i < rows.length; i++) {
-    expect(rows[i].left, closeTo(paragraph.left, 1),
-        reason: '$reason row ${i + 1}: left edge must be justified');
+    expect(rows[i].left, greaterThanOrEqualTo(paragraph.left - 0.5),
+        reason: '$reason row ${i + 1}: text stays within the left margin');
     expect(rows[i].right, closeTo(paragraph.right, 1),
-        reason: '$reason row ${i + 1}: right edge must be justified');
+        reason: '$reason row ${i + 1}: text starts at the RTL margin');
   }
+  expectNaturalMushafSpaces(tester, reason: reason);
 }
 
 void main() {
@@ -52,7 +53,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final width in [320.0, 500.0]) {
-    testWidgets('short final lines align both rendered edges at width $width',
+    testWidgets('short final lines retain natural spacing at width $width',
         (tester) async {
       const words = ['كَفَرُوا۟', 'سَوَآءٌ', 'عَلَيْهِمْ'];
       await tester.pumpWidget(MaterialApp(
@@ -72,7 +73,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(mushafWords(), words);
       expect(mushafTextRows(tester).length, 1);
-      expectFlushRows(tester, reason: 'short line at width $width');
+      expectRtlRows(tester, reason: 'short line at width $width');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
@@ -157,7 +158,7 @@ void main() {
     }
     expect(mushafTextRows(tester).length, 1,
         reason: 'the one-line budget must retain every word');
-    expectFlushRows(tester, reason: '200px paper at double text scale');
+    expectRtlRows(tester, reason: '200px paper at double text scale');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -189,7 +190,7 @@ void main() {
       (page: 6, surah: 2, ayah: 30, theme: 'classic'),
       (page: 84, surah: 4, ayah: 34, theme: 'classic'),
     ]) {
-      testWidgets('page ${target.page} has flush body rows at $size',
+      testWidgets('page ${target.page} has natural RTL body spacing at $size',
           (tester) async {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1;
@@ -241,7 +242,7 @@ void main() {
           expect(rect.top, greaterThanOrEqualTo(frame.top));
           expect(rect.bottom, lessThanOrEqualTo(frame.bottom));
         }
-        expectFlushRows(tester, reason: 'page ${target.page} at $size');
+        expectRtlRows(tester, reason: 'page ${target.page} at $size');
         // Every verse marker remains on the same row as its final body word.
         final bodyRects = mushafWordRects(tester);
         final markerTexts = find.descendant(

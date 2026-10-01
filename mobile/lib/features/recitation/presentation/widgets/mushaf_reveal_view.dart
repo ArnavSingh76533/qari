@@ -235,21 +235,17 @@ class MushafRevealView extends StatelessWidget {
     final cached = _layoutCache[cacheKey];
     if (cached != null) return cached;
     const baseHeight = 1.65;
-    (double, int, bool) measure(double size, double height) {
+    (double, int) measure(double size, double height) {
       final content = _compose(context, width, size, height, decorate: false);
       final painter = content.measure(width, TextScaler.noScaling);
       final lines = painter.computeLineMetrics();
-      // The final, zero-height placeholder creates a soft break after the
-      // last real line. Exclude that placeholder line from the visible page.
-      final count = lines.length > 1 ? lines.length - 1 : 1;
-      final flush =
-          lines.take(count).every((line) => line.width >= width - 0.5);
+      final count = lines.length;
       painter.dispose();
       final visible =
           content.measure(width, TextScaler.noScaling, maxLines: count);
       final bottom = visible.height;
       visible.dispose();
-      return (bottom, count, flush);
+      return (bottom, count);
     }
 
     var size = fontSize;
@@ -270,12 +266,6 @@ class MushafRevealView extends StatelessWidget {
         }
       }
       size = low;
-      // A one-word widow cannot be justified. Slightly reduce the glyph size
-      // until the preceding word joins it, including before surah openings.
-      for (var i = 0; i < 80 && !measure(size, baseHeight).$3; i++) {
-        if (size * 0.99 < minimumSize) break;
-        size *= 0.99;
-      }
     }
     var leading = baseHeight;
     var result = measure(size, leading);
@@ -393,12 +383,6 @@ class MushafRevealView extends StatelessWidget {
         );
       }
     }
-    // Flutter only justifies soft-wrapped lines. This non-painted trailing
-    // placeholder soft-wraps the last real line as well; maxLines excludes
-    // the placeholder's own line without truncating any Quran text.
-    text(' ');
-    placeholder(
-        const ExcludeSemantics(child: SizedBox.shrink()), Size(width, 0));
     return _ParagraphContent(
       TextSpan(
           style: _arabicStyle(size, mushaf.text, leading), children: children),
@@ -510,7 +494,9 @@ class MushafParagraph extends RichText {
       required super.text,
       required super.textScaler,
       required super.maxLines})
-      : super(textAlign: TextAlign.justify, textDirection: TextDirection.rtl);
+      // Stock paragraph justification expands blank spaces. Keep the Hafs
+      // font's natural advances on every row, including short/final rows.
+      : super(textAlign: TextAlign.right, textDirection: TextDirection.rtl);
 }
 
 class _ParagraphContent {
@@ -525,7 +511,7 @@ class _ParagraphContent {
   TextPainter measure(double width, TextScaler scaler, {int? maxLines}) =>
       TextPainter(
         text: span,
-        textAlign: TextAlign.justify,
+        textAlign: TextAlign.right,
         textDirection: TextDirection.rtl,
         textScaler: scaler,
         maxLines: maxLines,

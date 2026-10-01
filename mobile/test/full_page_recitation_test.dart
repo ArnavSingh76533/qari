@@ -322,11 +322,12 @@ void main() {
       }
       final paragraphBounds = tester.getRect(find.byType(MushafParagraph));
       for (final row in mushafTextRows(tester)) {
-        if ((row.left - paragraphBounds.left).abs() > 1 ||
+        if (row.left < paragraphBounds.left - 0.5 ||
             (row.right - paragraphBounds.right).abs() > 1) {
-          failures.add('page $page: ragged row $row inside $paragraphBounds');
+          failures.add('page $page: RTL row $row outside $paragraphBounds');
         }
       }
+      expectNaturalMushafSpaces(tester, reason: 'page $page with Tajweed');
       final frame = tester.getRect(find.byType(MushafPageFrame));
       expect(mushafWords(), reveal.words, reason: 'page $page body text');
       final bodyRects = mushafWordRects(tester);
