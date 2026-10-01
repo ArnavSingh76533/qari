@@ -21,14 +21,16 @@ void expectRtlRows(WidgetTester tester, {required String reason}) {
   final rows = mushafTextRows(tester);
   expect(rows, isNotEmpty, reason: reason);
   final view = tester.widget<MushafRevealView>(find.byType(MushafRevealView));
-  final lines = tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
-  expect(rows.length, lines.length, reason: '$reason: a fitted line must never wrap');
+  final lines =
+      tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
+  expect(rows.length, lines.length,
+      reason: '$reason: a fitted line must never wrap');
   var end = -1;
   for (var i = 0; i < rows.length; i++) {
     end += lines[i].wordSpans.length;
     if (!view.surahEnds.contains(end)) {
       expect(rows[i].left, closeTo(paragraph.left, 1),
-        reason: '$reason row ${i + 1}: fitted left margin must be flush');
+          reason: '$reason row ${i + 1}: fitted left margin must be flush');
     }
     expect(rows[i].left, greaterThanOrEqualTo(paragraph.left - 0.5),
         reason: '$reason row ${i + 1}: text stays within the left margin');

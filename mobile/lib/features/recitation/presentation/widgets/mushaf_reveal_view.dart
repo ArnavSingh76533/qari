@@ -91,6 +91,7 @@ class MushafRevealView extends StatelessWidget {
   /// These lines are right-aligned at their natural size and never expanded.
   final List<int> surahEnds;
 
+  static const _openingGap = 4.0;
   static final Map<(String, TextScaler), _PageLayout> _layoutCache = {};
 
   const MushafRevealView({
@@ -128,8 +129,10 @@ class MushafRevealView extends StatelessWidget {
       if (words.isEmpty) return SizedBox(height: minimumHeight, key: caretKey);
       final width = constraints.maxWidth;
       if (!width.isFinite || width <= 0) return const SizedBox.shrink();
-      final layout = _layoutPage(context, width, MediaQuery.textScalerOf(context));
-      final gap = math.max(0.0, minimumHeight - layout.height) / layout.lines.length;
+      final layout =
+          _layoutPage(context, width, MediaQuery.textScalerOf(context));
+      final gap =
+          math.max(0.0, minimumHeight - layout.height) / layout.lines.length;
       final children = <Widget>[];
       var top = 0.0;
       for (final line in layout.lines) {
@@ -137,37 +140,56 @@ class MushafRevealView extends StatelessWidget {
         if (block != null) {
           final nativeHeight = blockHeights[line.start] ?? 92;
           final height = nativeHeight * layout.blockScale;
-          children.add(Positioned(top: top, left: 0, right: 0, height: height,
-            child: FittedBox(fit: BoxFit.contain,
-              child: SizedBox(width: width, height: nativeHeight, child: block))));
-          top += height;
+          top += _openingGap * layout.blockScale;
+          children.add(Positioned(
+              top: top,
+              left: 0,
+              right: 0,
+              height: height,
+              child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                      width: width, height: nativeHeight, child: block))));
+          top += height + _openingGap * layout.blockScale;
         }
         top += gap;
         final height = line.nativeSize.height * line.scale;
-        children.add(Positioned(top: top, left: 0, right: 0, height: height,
-          child: _buildLine(context, line, layout.fontSize, layout.leading)));
+        children.add(Positioned(
+            top: top,
+            left: 0,
+            right: 0,
+            height: height,
+            child: _buildLine(context, line, layout.fontSize, layout.leading)));
         top += height;
       }
       if (caretKey != null &&
           (cursorKey == null || cursor < 0 || cursor >= words.length)) {
-        children.add(Positioned(bottom: 0, left: 0,
-          child: SizedBox(key: caretKey, width: 0, height: 0)));
+        children.add(Positioned(
+            bottom: 0,
+            left: 0,
+            child: SizedBox(key: caretKey, width: 0, height: 0)));
       }
-      return Directionality(textDirection: TextDirection.rtl,
-        child: SizedBox(height: math.max(minimumHeight, top),
-          child: Stack(clipBehavior: Clip.none, children: children)));
+      return Directionality(
+          textDirection: TextDirection.rtl,
+          child: SizedBox(
+              height: math.max(minimumHeight, top),
+              child: Stack(clipBehavior: Clip.none, children: children)));
     });
   }
 
-  Widget _buildLine(BuildContext context, _LineLayout line, double size, double leading) {
+  Widget _buildLine(
+      BuildContext context, _LineLayout line, double size, double leading) {
     var content = _compose(context, line.start, line.end, size, leading);
     final painter = content.measure(line.nativeSize.width);
     final rects = <Rect>[];
     for (final range in content.ranges) {
       final boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: range.start, extentOffset: range.end));
-      rects.add(boxes.isEmpty ? Rect.zero : boxes.map((b) => b.toRect())
-        .reduce((a, b) => a.expandToInclude(b)));
+          TextSelection(baseOffset: range.start, extentOffset: range.end));
+      rects.add(boxes.isEmpty
+          ? Rect.zero
+          : boxes
+              .map((b) => b.toRect())
+              .reduce((a, b) => a.expandToInclude(b)));
     }
     final markerOffsets = <int, double>{};
     final placeholders = painter.inlinePlaceholderBoxes ?? const [];
@@ -175,29 +197,42 @@ class MushafRevealView extends StatelessWidget {
       final (placeholderIndex, markerWidth) = entry.value;
       if (placeholderIndex < placeholders.length) {
         markerOffsets[entry.key] = rects[entry.key - line.start].left -
-          markerWidth - placeholders[placeholderIndex].left;
+            markerWidth -
+            placeholders[placeholderIndex].left;
       }
     }
     painter.dispose();
     content = _compose(context, line.start, line.end, size, leading,
-      markerOffsets: markerOffsets);
+        markerOffsets: markerOffsets);
     final tap = onMistakeTap;
-    return FittedBox(fit: BoxFit.contain, alignment: Alignment.centerRight,
-      child: SizedBox.fromSize(size: line.nativeSize,
-        child: Stack(clipBehavior: Clip.none, children: [
-          MushafParagraph(wordRanges: content.ranges, wordSpans: content.words,
-            text: content.span, textScaler: TextScaler.noScaling, maxLines: 1),
-          if (tap != null)
-            for (var local = 0; local < rects.length; local++)
-              if (_state(line.start + local) == LiveWordViewState.mismatch)
-                Positioned.fromRect(rect: rects[local],
-                  child: GestureDetector(behavior: HitTestBehavior.opaque,
-                    onTap: () => tap(line.start + local))),
-          if (!reviewMode && cursorKey != null &&
-              cursor >= line.start && cursor <= line.end)
-            Positioned.fromRect(rect: rects[cursor - line.start],
-              child: IgnorePointer(child: SizedBox(key: cursorKey))),
-        ])));
+    return FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.centerRight,
+        child: SizedBox.fromSize(
+            size: line.nativeSize,
+            child: Stack(clipBehavior: Clip.none, children: [
+              MushafParagraph(
+                  wordRanges: content.ranges,
+                  wordSpans: content.words,
+                  text: content.span,
+                  textScaler: TextScaler.noScaling,
+                  maxLines: 1),
+              if (tap != null)
+                for (var local = 0; local < rects.length; local++)
+                  if (_state(line.start + local) == LiveWordViewState.mismatch)
+                    Positioned.fromRect(
+                        rect: rects[local],
+                        child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => tap(line.start + local))),
+              if (!reviewMode &&
+                  cursorKey != null &&
+                  cursor >= line.start &&
+                  cursor <= line.end)
+                Positioned.fromRect(
+                    rect: rects[cursor - line.start],
+                    child: IgnorePointer(child: SizedBox(key: cursorKey))),
+            ])));
   }
 
   LiveWordViewState _state(int index) {
@@ -210,11 +245,14 @@ class MushafRevealView extends StatelessWidget {
             serverStatus: status, index: index, cursor: cursor);
   }
 
-  _PageLayout _layoutPage(BuildContext context, double width, TextScaler scaler) {
+  _PageLayout _layoutPage(
+      BuildContext context, double width, TextScaler scaler) {
     final key = (
       '${words.join(' ')}|${ayahBoundaries.join(',')}|${ayahLabels.join(',')}|'
-      '${lineEnds.join(',')}|${surahEnds.join(',')}|${blocksBefore.keys.join(',')}|'
-      '${blockHeights.entries.join(',')}|$width|$minimumHeight|$fontSize', scaler);
+          '${lineEnds.join(',')}|${surahEnds.join(',')}|${blocksBefore.keys.join(',')}|'
+          '${blockHeights.entries.join(',')}|$width|$minimumHeight|$fontSize',
+      scaler
+    );
     final cached = _layoutCache[key];
     if (cached != null) return cached;
     final baseSize = scaler.scale(fontSize);
@@ -224,14 +262,20 @@ class MushafRevealView extends StatelessWidget {
     // Without printed metadata (surah/range targets or multi-page ayahs),
     // measure complete word/marker units at a readable size and wrap them.
     // Long targets retain a readable minimum and scroll as a whole.
-    if (lineEnds.isEmpty && minimumHeight > 0 && result.height > minimumHeight) {
+    if (lineEnds.isEmpty &&
+        minimumHeight > 0 &&
+        result.height > minimumHeight) {
       var low = math.min(size, scaler.scale(13));
       var high = size;
       for (var i = 0; i < 10; i++) {
         final mid = (low + high) / 2;
         final candidateEnds = _allocateLines(context, width, mid);
         final candidate = _measurePage(context, width, mid, candidateEnds);
-        if (candidate.height <= minimumHeight) { low = mid; } else { high = mid; }
+        if (candidate.height <= minimumHeight) {
+          low = mid;
+        } else {
+          high = mid;
+        }
       }
       size = low;
       ends = _allocateLines(context, width, size);
@@ -244,21 +288,25 @@ class MushafRevealView extends StatelessWidget {
 
   List<int> _allocateLines(BuildContext context, double width, double size) {
     final forced = <int>{
-      for (final start in blocksBefore.keys) if (start > 0 && start < words.length) start - 1,
-      for (final end in surahEnds) if (end >= 0 && end < words.length) end,
+      for (final start in blocksBefore.keys)
+        if (start > 0 && start < words.length) start - 1,
+      for (final end in surahEnds)
+        if (end >= 0 && end < words.length) end,
     };
     var previous = -1;
-    final valid = lineEnds.isNotEmpty && lineEnds.every((end) {
-      final ok = end > previous && end < words.length;
-      previous = end;
-      return ok;
-    });
+    final valid = lineEnds.isNotEmpty &&
+        lineEnds.every((end) {
+          final ok = end > previous && end < words.length;
+          previous = end;
+          return ok;
+        });
     if (valid && lineEnds.last == words.length - 1) {
       return ({...lineEnds, ...forced}.toList()..sort());
     }
-    final space = TextPainter(text: TextSpan(text: ' ',
-      style: _arabicStyle(size, mushaf.text, 1.65)),
-      textDirection: TextDirection.rtl)..layout();
+    final space = TextPainter(
+        text: TextSpan(text: ' ', style: _arabicStyle(size, mushaf.text, 1.65)),
+        textDirection: TextDirection.rtl)
+      ..layout();
     final spaceWidth = space.width;
     space.dispose();
     final ends = <int>[];
@@ -268,12 +316,14 @@ class MushafRevealView extends StatelessWidget {
     for (var i = 0; i < words.length; i++) {
       final key = '${words[i]}|${_labelForBoundary(i)}';
       final wordWidth = widths.putIfAbsent(key, () {
-        final painter = _compose(context, i, i, size, 1.65, decorate: false).measure();
+        final painter =
+            _compose(context, i, i, size, 1.65, decorate: false).measure();
         final measured = painter.width;
         painter.dispose();
         return measured;
       });
-      if (i > start && (forced.contains(i - 1) || used + spaceWidth + wordWidth > width)) {
+      if (i > start &&
+          (forced.contains(i - 1) || used + spaceWidth + wordWidth > width)) {
         ends.add(i - 1);
         start = i;
         used = 0;
@@ -284,45 +334,78 @@ class MushafRevealView extends StatelessWidget {
     return ends;
   }
 
-  _PageLayout _measurePage(BuildContext context, double width, double size, List<int> ends) {
+  _PageLayout _measurePage(
+      BuildContext context, double width, double size, List<int> ends) {
     const normalLeading = 1.65;
     final sizes = <Size>[];
     final scales = <double>[];
     var start = 0;
     for (final end in ends) {
-      final painter = _compose(context, start, end, size, normalLeading,
-        decorate: false).measure();
+      final painter =
+          _compose(context, start, end, size, normalLeading, decorate: false)
+              .measure();
       sizes.add(Size(painter.width, painter.height));
       scales.add(width / math.max(painter.width, 0.001));
       painter.dispose();
       start = end + 1;
     }
-    final bodyScales = [for (var i = 0; i < ends.length; i++)
-      if (!surahEnds.contains(ends[i])) scales[i]]..sort();
-    final endingScale = bodyScales.isEmpty ? 1.0 : math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
+    final bodyScales = [
+      for (var i = 0; i < ends.length; i++)
+        if (!surahEnds.contains(ends[i])) scales[i]
+    ]..sort();
+    final endingScale = bodyScales.isEmpty
+        ? 1.0
+        : math.min(1.0, bodyScales[bodyScales.length ~/ 2]);
     for (var i = 0; i < ends.length; i++) {
-      if (surahEnds.contains(ends[i])) scales[i] = math.min(scales[i], endingScale);
+      if (surahEnds.contains(ends[i]))
+        scales[i] = math.min(scales[i], endingScale);
     }
-    final openings = blocksBefore.keys.where((i) => i >= 0 && i < words.length)
-      .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92));
-    final bodyHeight = List.generate(sizes.length, (i) => sizes[i].height * scales[i])
-      .fold(0.0, (a, b) => a + b);
+    final openings = blocksBefore.keys
+        .where((i) => i >= 0 && i < words.length)
+        .fold(0.0, (height, i) => height + (blockHeights[i] ?? 92) + 2 * _openingGap);
+    final bodyHeight =
+        List.generate(sizes.length, (i) => sizes[i].height * scales[i])
+            .fold(0.0, (a, b) => a + b);
     var leading = normalLeading;
     var blockScale = 1.0;
+    List<Size> measureSizes(double lineLeading) {
+      final measured = <Size>[];
+      var first = 0;
+      for (final end in ends) {
+        final painter = _compose(context, first, end, size, lineLeading,
+          decorate: false).measure();
+        measured.add(Size(painter.width, painter.height));
+        painter.dispose();
+        first = end + 1;
+      }
+      return measured;
+    }
+    double pageHeight(List<Size> measured) => openings * blockScale +
+      List.generate(measured.length, (i) => measured[i].height * scales[i])
+        .fold(0.0, (a, b) => a + b);
     if (lineEnds.isNotEmpty && minimumHeight > 0 && bodyHeight + openings > minimumHeight) {
-      if (openings > 0) blockScale = ((minimumHeight - bodyHeight) / openings).clamp(0.5, 1.0);
-      leading = (normalLeading * (minimumHeight - openings * blockScale) / bodyHeight)
-        .clamp(1.1, normalLeading);
+      if (openings > 0) {
+        blockScale = ((minimumHeight - bodyHeight) / openings).clamp(0.5, 1.0);
+      }
+      // TextPainter rounds each native line height separately. Fit those exact
+      // measured heights; multiplying a page-wide height ratio can overshoot.
+      var low = 1.1;
+      var high = normalLeading;
+      for (var i = 0; i < 12; i++) {
+        final mid = (low + high) / 2;
+        if (pageHeight(measureSizes(mid)) <= minimumHeight) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      leading = low;
+      sizes.setAll(0, measureSizes(leading));
     }
     final lines = <_LineLayout>[];
     var height = openings * blockScale;
     start = 0;
     for (var i = 0; i < ends.length; i++) {
-      if (leading != normalLeading) {
-        final painter = _compose(context, start, ends[i], size, leading, decorate: false).measure();
-        sizes[i] = Size(painter.width, painter.height);
-        painter.dispose();
-      }
       lines.add(_LineLayout(start, ends[i], sizes[i], scales[i]));
       height += sizes[i].height * scales[i];
       start = ends[i] + 1;
@@ -530,7 +613,10 @@ class MushafParagraph extends RichText {
       required super.maxLines})
       // Stock paragraph justification expands blank spaces. Keep the Hafs
       // font's natural advances on every row, including short/final rows.
-      : super(textAlign: TextAlign.right, textDirection: TextDirection.rtl, softWrap: false);
+      : super(
+            textAlign: TextAlign.right,
+            textDirection: TextDirection.rtl,
+            softWrap: false);
 }
 
 class _ParagraphContent {
@@ -542,13 +628,14 @@ class _ParagraphContent {
   const _ParagraphContent(
       this.span, this.dimensions, this.ranges, this.words, this.markers);
 
-  TextPainter measure([double? width]) =>
-      TextPainter(text: span, textAlign: TextAlign.right,
-        textDirection: TextDirection.rtl, textScaler: TextScaler.noScaling,
-        maxLines: width == null ? null : 1)
-        ..setPlaceholderDimensions(dimensions)
-        ..layout(minWidth: width ?? 0, maxWidth: width ?? double.infinity);
-
+  TextPainter measure([double? width]) => TextPainter(
+      text: span,
+      textAlign: TextAlign.right,
+      textDirection: TextDirection.rtl,
+      textScaler: TextScaler.noScaling,
+      maxLines: width == null ? null : 1)
+    ..setPlaceholderDimensions(dimensions)
+    ..layout(minWidth: width ?? 0, maxWidth: width ?? double.infinity);
 }
 
 class _LineLayout {
@@ -565,7 +652,8 @@ class _PageLayout {
   final double blockScale;
   final double height;
   final List<_LineLayout> lines;
-  const _PageLayout(this.fontSize, this.leading, this.blockScale, this.height, this.lines);
+  const _PageLayout(
+      this.fontSize, this.leading, this.blockScale, this.height, this.lines);
 }
 
 TextStyle _arabicStyle(double size, Color? color, double height) =>

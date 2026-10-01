@@ -6,8 +6,8 @@ import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view
 /// Widget bounds after all FittedBox transforms, including size scaling.
 Rect mushafRect(WidgetTester tester, Finder finder) {
   final render = tester.renderObject<RenderBox>(finder);
-  return MatrixUtils.transformRect(render.getTransformTo(null),
-      Offset.zero & render.size);
+  return MatrixUtils.transformRect(
+      render.getTransformTo(null), Offset.zero & render.size);
 }
 
 /// Reads the actual word spans, excluding separators and ayah markers.
@@ -104,12 +104,14 @@ void expectNaturalMushafSpaces(WidgetTester tester, {required String reason}) {
     reference.dispose();
     expect(natural, greaterThan(0), reason: 'Hafs space metric must be loaded');
     final transform = render.getTransformTo(null);
-    final scaledNatural = MatrixUtils.transformRect(transform,
-      Rect.fromLTWH(0, 0, natural, 1)).width;
-    final verticalScale = MatrixUtils.transformRect(transform,
-      const Rect.fromLTWH(0, 0, 1, 1)).height;
+    final scaledNatural =
+        MatrixUtils.transformRect(transform, Rect.fromLTWH(0, 0, natural, 1))
+            .width;
+    final verticalScale =
+        MatrixUtils.transformRect(transform, const Rect.fromLTWH(0, 0, 1, 1))
+            .height;
     expect(scaledNatural / natural, closeTo(verticalScale, 0.001),
-      reason: '$reason: a line must scale glyphs and spaces uniformly');
+        reason: '$reason: a line must scale glyphs and spaces uniformly');
     final text = paragraph.text.toPlainText(includeSemanticsLabels: false);
     for (var i = 0; i < text.length; i++) {
       if (text[i] != ' ' && text[i] != '\u00a0') continue;
@@ -144,9 +146,11 @@ List<Rect> mushafWordRects(WidgetTester tester) {
         TextSelection(baseOffset: range.start, extentOffset: range.end),
       );
       expect(boxes, isNotEmpty, reason: 'a body word has no selection boxes');
-      result.add(MatrixUtils.transformRect(transform, boxes
-          .map((box) => box.toRect())
-          .reduce((a, b) => a.expandToInclude(b))));
+      result.add(MatrixUtils.transformRect(
+          transform,
+          boxes
+              .map((box) => box.toRect())
+              .reduce((a, b) => a.expandToInclude(b))));
     }
   }
   return result;

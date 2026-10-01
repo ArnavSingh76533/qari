@@ -124,10 +124,11 @@ void main() {
       expect(page.height, greaterThan(size.height * .70),
           reason: 'Quran must fill the viewport instead of a short card');
       expect(page.bottom, closeTo(bar.top, 18));
-      expect(
-          mushafRect(tester, find.text('٧')).bottom, greaterThan(page.bottom - 80),
+      expect(mushafRect(tester, find.text('٧')).bottom,
+          greaterThan(page.bottom - 80),
           reason: 'Quran lines should use the whole sheet');
-      expect(mushafRect(tester, find.text('٧')).bottom, lessThanOrEqualTo(bar.top));
+      expect(mushafRect(tester, find.text('٧')).bottom,
+          lessThanOrEqualTo(bar.top));
       final position =
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       expect(position.maxScrollExtent, lessThanOrEqualTo(2),
@@ -322,14 +323,18 @@ void main() {
       }
       final paragraphBounds = tester.getRect(find.byType(MushafRevealView));
       final rows = mushafTextRows(tester);
-      final paragraphs = tester.widgetList<MushafParagraph>(find.byType(MushafParagraph)).toList();
-      if (rows.length != paragraphs.length) failures.add('page $page: a printed line wrapped');
+      final paragraphs = tester
+          .widgetList<MushafParagraph>(find.byType(MushafParagraph))
+          .toList();
+      if (rows.length != paragraphs.length)
+        failures.add('page $page: a printed line wrapped');
       var wordEnd = -1;
       for (var i = 0; i < rows.length; i++) {
         final row = rows[i];
         wordEnd += paragraphs[i].wordSpans.length;
         if (row.left < paragraphBounds.left - 0.5 ||
-            (!reveal.surahEnds.contains(wordEnd) && (row.left - paragraphBounds.left).abs() > 1) ||
+            (!reveal.surahEnds.contains(wordEnd) &&
+                (row.left - paragraphBounds.left).abs() > 1) ||
             (row.right - paragraphBounds.right).abs() > 1) {
           failures.add('page $page: RTL row $row outside $paragraphBounds');
         }

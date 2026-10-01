@@ -362,7 +362,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       final finalAyahs = <int, int>{};
       for (final surah in ayahs.map((a) => a.surahNumber).toSet()) {
         final completeSurah = await _corpus.getAyahs(surah);
-        if (completeSurah.isNotEmpty) finalAyahs[surah] = completeSurah.last.ayahNumber;
+        if (completeSurah.isNotEmpty)
+          finalAyahs[surah] = completeSurah.last.ayahNumber;
       }
       final labels = <String>[];
       final meta = <_AyahMeta>[];
@@ -391,7 +392,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         refs.add((a.surahNumber, a.ayahNumber));
         if (a.words.isNotEmpty) {
           boundaries.add(words.length - 1);
-          if (a.ayahNumber == finalAyahs[a.surahNumber]) surahEnds.add(words.length - 1);
+          if (a.ayahNumber == finalAyahs[a.surahNumber])
+            surahEnds.add(words.length - 1);
           labels.add(a.ayahNumber.toString());
           meta.add(_AyahMeta(
             surah: a.surahNumber,
