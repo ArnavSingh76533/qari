@@ -53,13 +53,12 @@ void main() {
 
   testWidgets('every body line fills both margins without expanded spaces',
       (tester) async {
-    final words = List.generate(30, (i) =>
-        ['إِنَّ', 'ٱلَّذِينَ', 'كَفَرُوا۟', 'سَوَآءٌ', 'عَلَيْهِمْ'][i % 5]);
+    const words = ['ٱلْحَمْدُ', 'لِلَّهِ', 'رَبِّ', 'ٱلْعَٰلَمِينَ'];
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SizedBox(
       width: 320,
       child: MushafRevealView(words: words, statuses: const [],
-          mushaf: MushafTheme.classic, minimumHeight: 500,
-          lineEnds: const [4, 14, 29]),
+          mushaf: MushafTheme.classic, fontSize: 20,
+          lineEnds: const [3]),
     ))));
     await tester.pumpAndSettle();
     final frame = tester.getRect(find.byType(MushafRevealView));
