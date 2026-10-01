@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: ${{ !contains(github.event.head_commit.message, '[layout-test]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

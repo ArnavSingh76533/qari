@@ -41,6 +41,7 @@ jobs:
         # Some legacy tests are network/timer bound; run the stable suites.
         run: |
           flutter test --dart-define=CAPTURE_QURAN_UI=true \
+            test/mushaf_justification_test.dart \
             test/ayah_widget_visibility_test.dart \
             test/recitation_screen_test.dart \
             test/recitation_word_mapping_test.dart \
