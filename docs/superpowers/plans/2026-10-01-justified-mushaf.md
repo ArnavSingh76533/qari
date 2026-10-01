@@ -1,33 +1,42 @@
-# Justified Mushaf regression fix
+# Natural Hafs word-spacing regression fix
 
-The user rejected independently centered rows and requested one RTL, justified
-rich-text body, with inline ayah markers and flush left/right page margins.
+The latest requirement gives natural, tight word spacing priority over forcing
+both page margins flush. Short/final lines may remain right-aligned; blank
+spaces must not stretch beyond the Hafs font's natural space advance.
 
 ## Implementation
 
-- Replace Wrap/Row word containers with one `MushafParagraph` (`RichText`).
-- Preserve source text as word TextSpans; use WidgetSpans for markers/openings.
-- Let Flutter shape and soft-wrap the paragraph with `TextAlign.justify`.
-- A trailing non-painted wrap placeholder makes the final visible row a soft
-  wrap too. Measure the paragraph and exclude only that placeholder row.
-- Fit font size/leading to the paper, retaining printed line-count budgets.
-- Resolve visibility, Tajweed, and mistake colour in the spans; use actual
-  selection geometry for cursor anchors and mistake hit targets.
+- Keep one continuous `MushafParagraph` (`RichText`) with word TextSpans and
+  inline ayah markers, explicit RTL direction and `TextAlign.right`.
+- Measure with the same right-aligned RTL TextPainter used for painting.
+- Remove the full-width trailing placeholder that forced the last real row
+  to justify, and count actual rows without subtracting a dummy row.
+- Remove the font-size backoff whose only purpose was justifying single-word
+  rows. Retain page-size/line-budget fitting, including Page 3's fifteen rows.
+- Preserve corpus text, grapheme-safe Tajweed colours, Hifz geometry, review
+  hit targets, cursor anchors, and tightly coupled inline marker baselines.
 
 ## Verification
 
-- Regression CI ac06f353: the old Wrap renderer fails the new structural test.
-- The same CI proves the final-visible-row technique spans exactly 0–320dp.
-- CI run 36863706203, commit 473d015d9c5e2e2d3106d8b1756140fc66232943:
-  analyzer reports no errors and all 132 tests pass.
-- Real glyph/marker bounds are flush on pages 1, 3, 6 and 84; Page 3 retains
-  fifteen rows. All 604 pages pass clipping, page-fit and ragged-row checks.
-- Migrated recitation-state, Hifz, red-wall, review-tap and scroll-anchor tests
-  pass, including normal review taps reaching the page controls.
-- Visually inspected fresh Page 1/3 captures at 430dp and Page 6 at 360dp:
-  both text edges are flush and ayah markers stay coupled to their final words.
-- Marker placeholders use the measured alphabetic baseline. Tajweed styling
-  preserves grapheme clusters and corpus-internal spaces do not stretch.
-- The release workflow gates a versioned ARM64 APK on layout/offline-entry
-  tests. Its entry remains `main_ui_preview.dart`, with the separate Android
-  package `com.qari.app.uipreview`; backend hosting is outside this change.
+- Red CI 36898716594 (4182c380): natural Hafs space at 20dp is 4.395dp,
+  but the previous renderer expands it to 115.039dp on 320dp paper and
+  205.039dp on 500dp paper. Both new regression tests fail as intended.
+- Green CI 36899358850 (2113f38d): all 133 tests pass; analyzer has no errors.
+- Independently shape `ا ا` with the loaded Hafs font and compare every real
+  separator's selection advance against its middle space (0.05dp tolerance).
+  Apply this check to all 604 pages with Tajweed enabled and phone sizes,
+  while checking page fit, RTL margins, source-word presence and markers.
+- Fresh Page 1/3 captures at 430dp show natural word spacing, with no expanded
+  interior gaps. Page 3 still has fifteen rows; all text stays in the frame.
+- Preview APK workflow includes the new spacing regressions as a build gate.
+  Entry remains `main_ui_preview.dart` / `com.qari.app.uipreview` for offline UI.
+
+## Tarteel reference
+
+Tarteel's engineering article describes edition-specific layout data and
+custom fonts that extend suitable letter components (kashida), rather than
+adding whitespace, before rendering onto a Skia canvas. The stock Hafs
+paragraph renderer keeps natural spacing; exact letter-based justification
+requires a different font/rendering engine.
+
+https://tarteel.ai/blog/from-page-to-screen-rethinking-quran-rendering-for-the-digital-age/

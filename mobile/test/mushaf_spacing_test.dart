@@ -9,7 +9,8 @@ import 'helpers/mushaf_paragraph_helpers.dart';
 void main() {
   setUpAll(() async {
     await (FontLoader('KFGQPCUthmanicHafs')
-          ..addFont(rootBundle.load('assets/fonts/KFGQPCUthmanicHafs-Regular.otf')))
+          ..addFont(
+              rootBundle.load('assets/fonts/KFGQPCUthmanicHafs-Regular.otf')))
         .load();
   });
 

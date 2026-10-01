@@ -80,15 +80,20 @@ void expectNaturalMushafSpaces(WidgetTester tester, {required String reason}) {
   var checked = 0;
   for (final element in find.byType(MushafParagraph).evaluate()) {
     final paragraph = element.widget as MushafParagraph;
-    final render = tester.renderObject<RenderParagraph>(find.byWidget(paragraph));
+    final render =
+        tester.renderObject<RenderParagraph>(find.byWidget(paragraph));
     final reference = TextPainter(
       text: TextSpan(text: 'ا ا', style: (paragraph.text as TextSpan).style),
       textDirection: TextDirection.rtl,
       textScaler: paragraph.textScaler,
     )..layout();
-    final natural = reference.getBoxesForSelection(
-      const TextSelection(baseOffset: 1, extentOffset: 2),
-    ).single.toRect().width;
+    final natural = reference
+        .getBoxesForSelection(
+          const TextSelection(baseOffset: 1, extentOffset: 2),
+        )
+        .single
+        .toRect()
+        .width;
     reference.dispose();
     expect(natural, greaterThan(0), reason: 'Hafs space metric must be loaded');
     final text = paragraph.text.toPlainText(includeSemanticsLabels: false);
