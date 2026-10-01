@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/data/models/recitation_stream_event.dart';
-import '../lib/features/recitation/presentation/mushaf/mushaf_theme.dart';
-import '../lib/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+import 'package:qari/data/models/recitation_stream_event.dart';
+import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
+import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+
+import 'helpers/mushaf_paragraph_helpers.dart';
 
 /// Wraps the view in a MaterialApp so theme colours resolve.
 Widget _host({
@@ -28,33 +30,19 @@ Widget _host({
 }
 
 /// Words whose RENDERED colour is the preset's mismatch ink.
-List<String> _redWords(WidgetTester tester, MushafTheme t) {
-  final out = <String>[];
-  for (final e in find.byType(Text).evaluate()) {
-    final w = e.widget as Text;
-    if (w.style?.color == t.mismatchInk && w.data != null) out.add(w.data!);
-  }
-  return out;
-}
+List<String> _redWords(WidgetTester tester, MushafTheme t) => [
+      for (final span in mushafWordSpans())
+        if (span.style?.color == t.mismatchInk) span.toPlainText(),
+    ];
 
-/// Background washes actually painted behind word widgets.
-Set<Color> _washes(WidgetTester tester) {
-  final out = <Color>{};
-  for (final e in find.byType(Container).evaluate()) {
-    final d = (e.widget as Container).decoration;
-    if (d is BoxDecoration && d.color != null) out.add(d.color!);
-  }
-  return out;
-}
+/// Background washes actually painted by word spans.
+Set<Color> _washes(WidgetTester tester) => {
+      for (final span in mushafWordSpans())
+        if (span.style?.backgroundColor case final color?) color,
+    };
 
-/// The rendered ink colour of the word whose text is [word].
-Color? _inkOf(WidgetTester tester, String word) {
-  for (final e in find.byType(Text).evaluate()) {
-    final w = e.widget as Text;
-    if (w.data == word) return w.style?.color;
-  }
-  return null;
-}
+Color? _inkOf(WidgetTester tester, String word) =>
+    mushafWordSpan(word).style?.color;
 
 const _words = <String>[
   'ٱلْحَمْدُ',
@@ -74,7 +62,10 @@ void _expectRedOnlyBehindCursor(
   required List<String> words,
   required int cursor,
 }) {
+  expect(mushafWords(), words);
   final red = _redWords(tester, MushafTheme.classic);
+  expect(red, words.take(cursor).toList(),
+      reason: 'every error strictly behind the cursor must remain visible');
   final allowed = {
     for (var i = 0; i < cursor && i < words.length; i++) words[i],
   };
@@ -153,8 +144,11 @@ void main() {
     expect(_redWords(tester, MushafTheme.classic), isNot(contains(_words[2])),
         reason: 'the active word is a highlight, not an error');
     expect(_redWords(tester, MushafTheme.classic), isNot(contains(_words.last)));
-    // The active word carries an underline decoration.
-    expect(find.byType(DecoratedBox), findsWidgets);
+    // The active word is highlighted without a mistake underline.
+    final activeStyle = mushafWordSpans()[2].style!;
+    expect(activeStyle.backgroundColor, MushafTheme.classic.activeTint);
+    expect(activeStyle.decoration?.contains(TextDecoration.underline) ?? false,
+        isFalse);
   });
 
   // ── Word-state → colour contract, across every preset ───────────────────
@@ -190,7 +184,18 @@ void main() {
         expect(_inkOf(tester, words[0]), t.mismatchInk);
         expect(_redWords(tester, t), [words[0]]);
 
-        // The green correct tint and the active wash are both painted.
+        expect(mushafWordSpans()[0].style?.decorationColor,
+            t.mismatchInk.withValues(alpha: 0.9));
+        expect(
+          mushafWordSpans()[0]
+              .style
+              ?.decoration
+              ?.contains(TextDecoration.underline),
+          isTrue,
+        );
+        expect(mushafWordSpans()[2].style?.backgroundColor, isNull);
+
+        // The active wash is painted only on the cursor.
         final washes = _washes(tester);
         expect(washes, contains(t.activeTint));
       });
@@ -232,6 +237,7 @@ void main() {
       await tester.pumpAndSettle();
       // The word ahead of the cursor is book ink, not washed, not red.
       expect(_inkOf(tester, 'عَلَىٰ'), MushafTheme.classic.text);
+      expect(mushafWordSpan('عَلَىٰ').style?.backgroundColor, isNull);
       // Only the active cursor carries a wash — no green/red verdict leaked
       // forward onto an unspoken word.
       expect(_washes(tester), isNot(contains(MushafTheme.classic.correctTint)));

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qari/core/theme/app_theme.dart';
+import 'helpers/mushaf_paragraph_helpers.dart';
 
 import '../lib/data/models/recitation_stream_event.dart';
 import '../lib/data/models/word_model.dart';
@@ -135,22 +137,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('بسم'), findsOneWidget);
-    expect(find.text('الله'), findsOneWidget);
-    // Ghunnah colouring applied → at least one per-letter TextSpan carries a
-    // non-null (rule) colour, proving the word is painted per-letter by rule.
-    final richTexts = tester.widgetList<RichText>(find.byType(RichText));
-    bool hasColouredSpan = false;
-    void visit(InlineSpan span) {
-      if (span is TextSpan && span.style?.color != null) hasColouredSpan = true;
-      final kids = span is TextSpan ? span.children : null;
-      if (kids != null) {
-        for (final k in kids) visit(k);
-      }
-    }
+    expect(mushafWords(), contains('بسم'));
+    expect(mushafWords(), contains('الله'));
+    final span = mushafWordSpan('الله');
+    expect(span.children, isNotEmpty);
+    expect((span.children!.first as TextSpan).style?.color,
+        AppTheme.ensureContrast(AppTheme.getTajweedColor('ghunnah'), Brightness.light));
 
-    for (final rt in richTexts) visit(rt.text);
-    expect(hasColouredSpan, isTrue);
   });
 
   testWidgets('MushafRevealView starts blank (no words, no dots)',
@@ -164,7 +157,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // No revealed words rendered.
+    // No paragraph or stray text is rendered for an empty target.
+    expect(find.byType(MushafParagraph), findsNothing);
     expect(find.text('بسم'), findsNothing);
     expect(find.text('الله'), findsNothing);
   });
@@ -192,9 +186,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // All revealed words appear as continuous Arabic text.
-    expect(find.text('بسم'), findsOneWidget);
-    expect(find.text('الله'), findsOneWidget);
-    expect(find.text('الرحمن'), findsOneWidget);
+    expect(mushafWords(), contains('بسم'));
+    expect(mushafWords(), contains('الله'));
+    expect(mushafWords(), contains('الرحمن'));
 
     // Inline end-of-ayah medallion (the Hafs font draws the Arabic-Indic
     // verse number as the ornament) appears between ayahs.
@@ -207,6 +201,7 @@ void main() {
         home: Scaffold(
           body: MushafRevealView(
             mushaf: MushafTheme.classic,
+            cursor: 2,
             words: const ['بسم', 'السلام'],
             statuses: const [
               LiveWordStatus.matched,
@@ -217,8 +212,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('بسم'), findsOneWidget);
+    expect(mushafWords(), contains('بسم'));
     // The mispronounced word is still revealed (not hidden).
-    expect(find.text('السلام'), findsOneWidget);
+    expect(mushafWords(), contains('السلام'));
+    expect(mushafWordSpan('السلام').style?.color, MushafTheme.classic.mismatchInk);
   });
 }

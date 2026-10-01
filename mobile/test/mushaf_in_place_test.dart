@@ -4,6 +4,8 @@ import 'package:qari/data/models/recitation_stream_event.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'helpers/mushaf_paragraph_helpers.dart';
+
 /// Mirrors the page's prime() step: the full target is laid out up front with
 /// every word pending (renders as neutral `unspoken`).
 Widget prime({
@@ -40,8 +42,10 @@ void main() {
       ayahLabels: const ['1'],
     ));
     // Every word is on screen from word one - no blank canvas, no hint text.
-    for (final w in fatiha) {
-      expect(find.text(w), findsOneWidget, reason: 'missing $w');
+    expect(mushafWords(), fatiha);
+    for (var i = 0; i < fatiha.length; i++) {
+      expect(mushafWordSpans()[i].style?.color, MushafTheme.classic.text);
+      expect(mushafWordRect(tester, i).isEmpty, isFalse);
     }
     expect(find.textContaining('Start reciting'), findsNothing);
   });
@@ -59,8 +63,8 @@ void main() {
       0x0651, 0x0652, 0x0653, 0x0670];
     var total = 0;
     for (final w in fatiha) {
-      final text = tester.widget<Text>(find.text(w));
-      final rendered = text.data!;
+      final rendered = mushafWordSpan(w).toPlainText();
+      expect(rendered, w);
       for (final c in rendered.codeUnits) {
         if (diacritics.contains(c)) total++;
       }
@@ -82,7 +86,12 @@ void main() {
     // remove or reorder a single word, so the rendered block is identical.
     final findView = () => tester.getSize(find.byType(MushafRevealView));
     final before = findView();
-    final wordsBefore =
+    final wordsBefore = mushafWords();
+    expect(wordsBefore, fatiha);
+    final rectsBefore = [
+      for (var i = 0; i < fatiha.length; i++) mushafWordRect(tester, i),
+    ];
+    final markersBefore =
         tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList();
 
     await tester.pumpWidget(prime(
@@ -97,8 +106,15 @@ void main() {
 
     expect(findView(), before,
         reason: 'page geometry changed when verdicts were applied');
-    final wordsAfter =
-        tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList();
+    final wordsAfter = mushafWords();
+    expect([
+      for (var i = 0; i < fatiha.length; i++) mushafWordRect(tester, i),
+    ], rectsBefore, reason: 'word geometry changed when verdicts were applied');
+    expect(
+      tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).toList(),
+      markersBefore,
+      reason: 'verse markers changed when verdicts were applied',
+    );
     expect(wordsAfter, wordsBefore,
         reason: 'the set/order of rendered words changed');
   });
@@ -115,8 +131,8 @@ void main() {
       statuses: const [LiveWordStatus.matched, LiveWordStatus.pending,
         LiveWordStatus.pending, LiveWordStatus.pending],
     ));
-    expect(find.text('بِسْمِ'), findsOneWidget);
-    expect(find.text('بسم'), findsNothing,
+    expect(mushafWords(), contains('بِسْمِ'));
+    expect(mushafWords(), isNot(contains('بسم')),
         reason: 'normalized clean_text leaked into the Mushaf view');
   });
 
@@ -145,14 +161,12 @@ void main() {
       statuses: List<LiveWordStatus>.filled(
           4, LiveWordStatus.error),
     ));
-    final err = Theme.of(tester.element(find.byType(Wrap).first)).colorScheme.error;
-    final reds = tester
-        .widgetList<Container>(find.byType(Container))
-        .where((c) {
-      final d = c.decoration;
-      if (d is! BoxDecoration) return false;
-      return d.color == err || d.border?.bottom.color == err;
-    });
-    expect(reds, isEmpty, reason: 'red appeared ahead of the cursor');
+    expect(mushafWords(), fatiha);
+    for (final span in mushafWordSpans()) {
+      expect(span.style?.color, MushafTheme.classic.text,
+          reason: 'red appeared at or ahead of the cursor');
+      expect(span.style?.decoration?.contains(TextDecoration.underline) ?? false,
+          isFalse);
+    }
   });
 }

@@ -10,6 +10,8 @@ import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/recitation_review.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'helpers/mushaf_paragraph_helpers.dart';
+
 const _words = <String>[
   'ٱلْحَمْدُ',
   'لِلَّهِ',
@@ -51,37 +53,22 @@ Widget _view({
   );
 }
 
-Color? _inkOf(String word) {
-  for (final e in find.byType(Text).evaluate()) {
-    final w = e.widget as Text;
-    if (w.data == word) return w.style?.color;
-  }
-  return null;
-}
+Color? _inkOf(String word) => mushafWordSpan(word).style?.color;
 
-/// Background washes painted behind words.
+Color? _markerInk(WidgetTester tester, String label) =>
+    tester.widget<Text>(find.text(label)).style?.color;
+
+/// Background washes painted by the shaped word spans.
 Set<Color> _washes() => {
-      for (final e in find.byType(Container).evaluate())
-        if ((e.widget as Container).decoration
-            case BoxDecoration(:final color?))
-          color,
+      for (final span in mushafWordSpans())
+        if (span.style?.backgroundColor case final color?) color,
     };
 
-/// Bottom border colours painted under words (the mistake underline).
-int _underlineCount(Color color) {
-  var n = 0;
-  for (final e in find.byType(Container).evaluate()) {
-    final container = e.widget as Container;
-    final d = container.foregroundDecoration ?? container.decoration;
-    if (d is BoxDecoration && d.border is Border) {
-      if ((d.border! as Border).bottom.color.toARGB32() ==
-          color.withValues(alpha: 0.9).toARGB32()) {
-        n++;
-      }
-    }
-  }
-  return n;
-}
+int _underlineCount(Color color) => mushafWordSpans().where((span) {
+      final style = span.style;
+      return (style?.decoration?.contains(TextDecoration.underline) ?? false) &&
+          style?.decorationColor == color.withValues(alpha: 0.9);
+    }).length;
 
 RecitationResult _server(List<bool> correct) => RecitationResult(
       sessionId: 's',
@@ -153,7 +140,9 @@ void main() {
         expect(_inkOf(_words[i])!.a, 0, reason: _words[i]);
       }
       // The ayah medallion stays visible to guide verse position.
-      expect(_inkOf('١'), t.accent);
+      expect(_markerInk(tester, '١'), t.accent);
+      expect(_washes(), isNot(contains(t.activeTint)),
+          reason: 'a hidden Hifz cursor must not reveal its position');
     });
 
     testWidgets('revealing a word never moves any word on the page',
@@ -168,7 +157,8 @@ void main() {
           cursor: revealed,
           hideUnspoken: hide,
         ));
-        return [for (final w in _words) tester.getRect(find.text(w))];
+        expect(mushafWords(), _words);
+        return [for (var i = 0; i < _words.length; i++) mushafWordRect(tester, i)];
       }
 
       final tilawat = await layout(false, 0);
@@ -195,8 +185,8 @@ void main() {
       for (final w in view.words) {
         expect(_inkOf(w)!.a, 0, reason: w);
       }
-      expect(_inkOf('٧'), isNot(null));
-      expect(_inkOf('٧')!.a, greaterThan(0));
+      expect(_markerInk(tester, '٧'), isNotNull);
+      expect(_markerInk(tester, '٧')!.a, greaterThan(0));
 
       // The Hifz entry has no switch into the separate Tilawat section.
       expect(find.byTooltip('Hifz: unsaid words hidden. Tap for Tilawat'),
@@ -312,13 +302,9 @@ void main() {
       final statuses = List.filled(_words.length, LiveWordStatus.matched);
       await tester.pumpWidget(
           _view(statuses: statuses, cursor: _words.length, reviewMode: true));
-      for (final e in find.byType(Container).evaluate()) {
-        final d = (e.widget as Container).decoration;
-        if (d is BoxDecoration) {
-          expect(d.color, isNot(t.correctTint));
-          expect(d.color, isNot(t.activeTint));
-        }
-      }
+      expect(mushafWords(), _words);
+      expect(_washes(), isNot(contains(t.correctTint)));
+      expect(_washes(), isNot(contains(t.activeTint)));
     });
 
     testWidgets('tapping a mistake reports its index', (tester) async {
@@ -331,7 +317,7 @@ void main() {
         reviewMode: true,
         onMistakeTap: (i) => tapped = i,
       ));
-      await tester.tap(find.text(_words[4]));
+      await tester.tapAt(mushafWordRect(tester, 4).center);
       expect(tapped, 4);
     });
   });

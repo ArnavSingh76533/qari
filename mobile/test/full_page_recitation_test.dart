@@ -14,22 +14,17 @@ import 'package:qari/features/recitation/presentation/pages/live_recitation_page
 import 'package:qari/features/recitation/presentation/recitation_mode.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'helpers/mushaf_paragraph_helpers.dart';
+
 void reportPageGeometry(WidgetTester tester) {
   if (!const bool.fromEnvironment('CAPTURE_QURAN_UI')) return;
   final finder = find.byType(MushafRevealView);
   final view = tester.widget<MushafRevealView>(finder);
-  final wordFinder =
-      find.descendant(of: finder, matching: find.text(view.words.first)).first;
-  final word = tester.widget<Text>(wordFinder);
-  final context = tester.element(wordFinder);
-  final painter = TextPainter(
-    text: TextSpan(text: view.words.first, style: word.style),
-    textDirection: TextDirection.rtl,
-    textScaler: MediaQuery.textScalerOf(context),
-  )..layout();
+  final paragraphFinder = find.byType(MushafParagraph).first;
+  final paragraph = tester.widget<MushafParagraph>(paragraphFinder);
+  final style = (paragraph.text as TextSpan).style;
   debugPrint(
-      'Quran geometry: paper=${view.minimumHeight}, flow=${tester.getSize(finder)}, font=${word.style?.fontSize}, word=${tester.getSize(wordFinder)}, measured=${painter.size}, blocks=${view.blocksBefore.entries.map((e) => '${e.key}:${tester.getSize(find.byWidget(e.value)).height}').join(',')}');
-  painter.dispose();
+      'Quran geometry: paper=${view.minimumHeight}, flow=${tester.getSize(finder)}, font=${style?.fontSize}, leading=${style?.height}, paragraph=${tester.getSize(paragraphFinder)}, blocks=${view.blocksBefore.entries.map((e) => '${e.key}:${tester.getSize(find.byWidget(e.value)).height}').join(',')}');
 }
 
 void main() {
@@ -233,6 +228,8 @@ void main() {
             .tajweedEnabled,
         isTrue);
     final before = tester.getRect(find.text('٤٠').last);
+    final bodyBefore = mushafWordRects(tester);
+    final wordsBefore = mushafWords();
     await tester.tap(find.byTooltip('Mushaf appearance'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
@@ -244,6 +241,9 @@ void main() {
             .widget<MushafRevealView>(find.byType(MushafRevealView))
             .tajweedEnabled,
         isFalse);
+    expect(mushafWords(), wordsBefore);
+    expect(mushafWordRects(tester), bodyBefore,
+        reason: 'Tajweed changes must preserve every shaped word rectangle');
     expect(tester.getRect(find.text('٤٠').last), before,
         reason: 'colour changes must preserve the Quran word layout');
     expect(tester.takeException(), isNull);
@@ -314,16 +314,37 @@ void main() {
           tester.state<ScrollableState>(find.byType(Scrollable).first).position;
       final lastBottom = tester.getRect(marker).bottom;
       if (lastBottom > controls.top || position.maxScrollExtent > 2) {
-        final first = find
-            .descendant(
-                of: find.byType(MushafRevealView),
-                matching: find.text(reveal.words.first))
-            .first;
-        final font = tester.widget<Text>(first).style?.fontSize;
+        final paragraph = tester.widget<MushafParagraph>(
+            find.byType(MushafParagraph).first);
+        final font = (paragraph.text as TextSpan).style?.fontSize;
         failures.add('page $page: font=$font, words=${reveal.words.length}, '
             'scroll=${position.maxScrollExtent}, last=$lastBottom, bar=${controls.top}');
       }
+      final paragraphBounds = tester.getRect(find.byType(MushafParagraph));
+      for (final row in mushafTextRows(tester)) {
+        if ((row.left - paragraphBounds.left).abs() > 1 ||
+            (row.right - paragraphBounds.right).abs() > 1) {
+          failures.add('page $page: ragged row $row inside $paragraphBounds');
+        }
+      }
       final frame = tester.getRect(find.byType(MushafPageFrame));
+      expect(mushafWords(), reveal.words, reason: 'page $page body text');
+      final bodyRects = mushafWordRects(tester);
+      expect(bodyRects.length, reveal.words.length, reason: 'page $page');
+      for (var i = 0; i < bodyRects.length; i++) {
+        final rect = bodyRects[i];
+        expect(rect.isEmpty, isFalse, reason: 'page $page word $i is missing');
+        expect(rect.left, greaterThanOrEqualTo(frame.left - 0.5),
+            reason: 'page $page word $i crosses the left frame');
+        expect(rect.right, lessThanOrEqualTo(frame.right + 0.5),
+            reason: 'page $page word $i crosses the right frame');
+        expect(rect.top, greaterThanOrEqualTo(frame.top - 0.5),
+            reason: 'page $page word $i crosses the top frame');
+        expect(rect.bottom, lessThanOrEqualTo(controls.top + 0.5),
+            reason: 'page $page word $i is beneath the controls');
+        expect(rect.bottom, lessThanOrEqualTo(frame.bottom + 0.5),
+            reason: 'page $page word $i crosses the bottom frame');
+      }
       for (final element in find
           .descendant(
             of: find.byType(MushafRevealView),

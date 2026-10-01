@@ -4,6 +4,8 @@ import 'package:qari/data/models/recitation_stream_event.dart';
 import 'package:qari/features/recitation/presentation/mushaf/mushaf_theme.dart';
 import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
 
+import 'helpers/mushaf_paragraph_helpers.dart';
+
 /// A long surah-ish block so the flow is taller than the viewport.
 List<String> bigWords(int n) =>
     List.generate(n, (i) => 'وَٰلْعَصْرِ${i}');
@@ -49,13 +51,16 @@ void main() {
     expect(ctx, isNotNull, reason: 'cursor key was never attached to any word');
 
     final anchorTop = ctx!.findRenderObject()! as RenderBox;
-    final flowBottom = tester.getBottomLeft(find.byType(Wrap)).dy;
-    final flowTop = tester.getTopLeft(find.byType(Wrap)).dy;
+    final flowBottom = tester.getBottomLeft(find.byType(MushafRevealView)).dy;
+    final flowTop = tester.getTopLeft(find.byType(MushafRevealView)).dy;
 
     // The anchor is within the first quarter of the document, well clear of the
     // end. Before the fix this would have measured at the very bottom.
     expect(anchorTop.localToGlobal(Offset.zero).dy,
         lessThan(flowTop + (flowBottom - flowTop) * 0.25));
+    expect(anchorTop.localToGlobal(Offset.zero).dy,
+        closeTo(mushafWordRect(tester, 2).top, 0.5),
+        reason: 'the scroll anchor must track the shaped cursor word');
   });
 
   testWidgets('anchor follows the cursor as it advances', (tester) async {
@@ -70,10 +75,12 @@ void main() {
     await tester.pumpWidget(host(words: words, cursor: 0, cursorKey: cursorKey));
     await tester.pumpAndSettle();
     final first = anchorDy();
+    expect(first, closeTo(mushafWordRect(tester, 0).top, 0.5));
 
     await tester.pumpWidget(host(words: words, cursor: 40, cursorKey: cursorKey));
     await tester.pumpAndSettle();
     final later = anchorDy();
+    expect(later, closeTo(mushafWordRect(tester, 40).top, 0.5));
 
     // The anchor must move DOWN the page as recitation progresses.
     expect(later, greaterThan(first));
@@ -88,6 +95,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(caret.currentContext, isNotNull,
         reason: 'idle page must still expose a measurable anchor');
-    expect(find.text('وَٰلْعَصْرِ0'), findsOneWidget);
+    expect(mushafWords(), words);
+    expect(mushafWordRect(tester, 0).isEmpty, isFalse);
   });
 }

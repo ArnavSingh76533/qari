@@ -1,0 +1,144 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qari/features/recitation/presentation/widgets/mushaf_reveal_view.dart';
+
+/// Reads the actual word spans, excluding separators and ayah markers.
+/// Fail if the paragraph is absent so colour assertions cannot pass vacuously.
+List<TextSpan> mushafWordSpans() {
+  final paragraphs = find
+      .byType(MushafParagraph)
+      .evaluate()
+      .map(
+        (element) => element.widget as MushafParagraph,
+      )
+      .toList();
+  expect(paragraphs, isNotEmpty, reason: 'no Mushaf paragraph was rendered');
+  final spans = <TextSpan>[];
+  for (final paragraph in paragraphs) {
+    expect(paragraph.wordRanges.length, paragraph.wordSpans.length);
+    final text = paragraph.text.toPlainText();
+    for (var i = 0; i < paragraph.wordRanges.length; i++) {
+      final range = paragraph.wordRanges[i];
+      expect(range.isValid, isTrue);
+      expect(range.isCollapsed, isFalse);
+      expect(range.end, lessThanOrEqualTo(text.length));
+      expect(text.substring(range.start, range.end),
+          paragraph.wordSpans[i].toPlainText(),
+          reason: 'word $i must identify its actual paragraph text');
+    }
+    spans.addAll(paragraph.wordSpans);
+  }
+  expect(spans, isNotEmpty, reason: 'no Mushaf words were rendered');
+  return spans;
+}
+
+List<String> mushafWords() => [
+      for (final span in mushafWordSpans()) span.toPlainText(),
+    ];
+
+TextSpan mushafWordSpan(String word) => mushafWordSpans().firstWhere(
+      (span) => span.toPlainText() == word,
+      orElse: () => throw StateError('Mushaf word was not rendered: $word'),
+    );
+
+/// Global glyph bounds from the paragraph's actual shaped selection boxes.
+Rect mushafWordRect(WidgetTester tester, int wordIndex) {
+  expect(wordIndex, greaterThanOrEqualTo(0));
+  final paragraphs = find.byType(MushafParagraph);
+  var remaining = wordIndex;
+  for (var i = 0; i < paragraphs.evaluate().length; i++) {
+    final finder = paragraphs.at(i);
+    final paragraph = tester.widget<MushafParagraph>(finder);
+    if (remaining >= paragraph.wordRanges.length) {
+      remaining -= paragraph.wordRanges.length;
+      continue;
+    }
+    final range = paragraph.wordRanges[remaining];
+    expect(range.isValid, isTrue);
+    expect(range.isCollapsed, isFalse);
+    final render = tester.renderObject<RenderParagraph>(finder);
+    final boxes = render.getBoxesForSelection(
+      TextSelection(baseOffset: range.start, extentOffset: range.end),
+    );
+    expect(boxes, isNotEmpty, reason: 'word $wordIndex has no glyph bounds');
+    var rect = boxes.first.toRect();
+    for (final box in boxes.skip(1)) {
+      rect = rect.expandToInclude(box.toRect());
+    }
+    expect(rect.width, greaterThan(0));
+    expect(rect.height, greaterThan(0));
+    return rect.shift(render.localToGlobal(Offset.zero));
+  }
+  throw RangeError('Mushaf word index $wordIndex was not rendered');
+}
+
+/// Measures every word with one finder traversal, for full-corpus checks.
+List<Rect> mushafWordRects(WidgetTester tester) {
+  final result = <Rect>[];
+  final paragraphs = find.byType(MushafParagraph);
+  final count = paragraphs.evaluate().length;
+  expect(count, greaterThan(0));
+  for (var i = 0; i < count; i++) {
+    final finder = paragraphs.at(i);
+    final paragraph = tester.widget<MushafParagraph>(finder);
+    final render = tester.renderObject<RenderParagraph>(finder);
+    final origin = render.localToGlobal(Offset.zero);
+    for (final range in paragraph.wordRanges) {
+      final boxes = render.getBoxesForSelection(
+        TextSelection(baseOffset: range.start, extentOffset: range.end),
+      );
+      expect(boxes, isNotEmpty, reason: 'a body word has no selection boxes');
+      result.add(boxes
+          .map((box) => box.toRect())
+          .reduce((a, b) => a.expandToInclude(b))
+          .shift(origin));
+    }
+  }
+  return result;
+}
+
+/// Actual body rows, including inline marker boxes and excluding header rows.
+/// Select through the final word/marker, but not the final space + sentinel.
+List<Rect> mushafTextRows(WidgetTester tester) {
+  final rows = <Rect>[];
+  for (final word in mushafWordRects(tester)) {
+    final row = rows.indexWhere((rect) => (rect.top - word.top).abs() < 0.5);
+    if (row < 0) {
+      rows.add(word);
+    } else {
+      rows[row] = rows[row].expandToInclude(word);
+    }
+  }
+  final paragraphs = find.byType(MushafParagraph);
+  final count = paragraphs.evaluate().length;
+  for (var i = 0; i < count; i++) {
+    final finder = paragraphs.at(i);
+    final paragraph = tester.widget<MushafParagraph>(finder);
+    final render = tester.renderObject<RenderParagraph>(finder);
+    final origin = render.localToGlobal(Offset.zero);
+    final textLength = paragraph.text.toPlainText().length;
+    final boxes = render.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: textLength - 2),
+    );
+    for (final box in boxes) {
+      final rect = box.toRect().shift(origin);
+      // Markers use their own baseline/height. Match the row with the
+      // greatest vertical overlap instead of comparing marker centres.
+      var best = -1;
+      var overlap = 0.0;
+      for (var j = 0; j < rows.length; j++) {
+        final intersection = rows[j].intersect(
+          Rect.fromLTRB(rows[j].left, rect.top, rows[j].right, rect.bottom),
+        );
+        if (intersection.height > overlap) {
+          overlap = intersection.height;
+          best = j;
+        }
+      }
+      if (best >= 0) rows[best] = rows[best].expandToInclude(rect);
+    }
+  }
+  rows.sort((a, b) => a.top.compareTo(b.top));
+  return rows;
+}
