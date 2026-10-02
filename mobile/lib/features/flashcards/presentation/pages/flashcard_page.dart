@@ -404,7 +404,7 @@ class _FlashcardBack extends StatelessWidget {
                     fontSize: 20,
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
-                  textAlign: TextAlign.justify,
+                  textAlign: TextAlign.start,
                 ),
               ),
             ),

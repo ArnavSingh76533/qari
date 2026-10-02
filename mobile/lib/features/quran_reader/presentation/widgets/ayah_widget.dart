@@ -122,7 +122,7 @@ class AyahWidget extends StatelessWidget {
             fontSize: arabicFontSize,
             color: theme.colorScheme.onSurface,
           ),
-          textAlign: TextAlign.justify,
+          textAlign: TextAlign.start,
         ),
       );
     }
@@ -199,7 +199,7 @@ class AyahWidget extends StatelessWidget {
       child: Text(
         translation,
         style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
-        textAlign: TextAlign.justify,
+        textAlign: TextAlign.start,
         textDirection: ArabicTextUtils.getDirection(translation),
       ),
     );

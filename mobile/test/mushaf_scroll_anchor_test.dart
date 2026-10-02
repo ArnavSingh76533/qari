@@ -76,9 +76,7 @@ void main() {
     // right), measured from the paragraph itself.
     expect(at.dy, closeTo(word.top, 0.5));
     expect(at.dx, closeTo(word.right, 0.5));
-    // The anchor adds nothing to the text: words are separated by one space.
-    final paragraph = mushafParagraphElements(tester).single.widget as RichText;
-    expect(paragraph.text.toPlainText(), words.join(' '));
+    expect(mushafUnitTexts(tester), words);
   });
 
   testWidgets('anchor follows the cursor as it advances', (tester) async {

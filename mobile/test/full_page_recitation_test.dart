@@ -57,6 +57,10 @@ void main() {
 
   setUp(() => SharedPreferences.setMockInitialValues({
         'mushaf_recitation_mode': 'tilawat',
+        if (const String.fromEnvironment('MUSHAF_CAPTURE_THEME') == 'night') ...{
+          'mushaf_theme_id': 'night',
+          'tajweed_colors_enabled': true,
+        },
       }));
 
   testWidgets('AI recitation always opens in Hifz despite the saved mode',
@@ -162,6 +166,8 @@ void main() {
   });
 
   for (final target in [
+    (3, 2, 6, '١٦'),
+    (6, 2, 30, '٣٧'),
     (48, 2, 282, '٢٨٢'),
     (501, 45, 23, '٣٢'),
     (576, 74, 19, '٤٧'),

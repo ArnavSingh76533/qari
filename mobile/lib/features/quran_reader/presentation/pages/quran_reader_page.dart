@@ -734,7 +734,7 @@ class _QuranReaderPageState extends ConsumerState<QuranReaderPage> {
                       child: Text(
                         ayah.ayahText,
                         style: AppTheme.arabicTextStyle(fontSize: 24),
-                        textAlign: TextAlign.justify,
+                        textAlign: TextAlign.start,
                       ),
                     ),
                     const SizedBox(height: 16),
