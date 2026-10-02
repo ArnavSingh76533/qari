@@ -279,6 +279,12 @@ class _MushafRevealViewState extends State<MushafRevealView> {
         final pitch = w.minimumHeight > 0
             ? (w.minimumHeight / slotsPerSheet) * scale
             : w.fontSize * MushafRevealView.baseLineHeight * scale;
+        final centeredWidth = w.centeredLines
+            ? rows.values
+                .map((units) => units.fold<double>(
+                    0, (sum, unit) => sum + _advance(_unitText(unit), style)))
+                .reduce((a, b) => a > b ? a : b)
+            : 0.0;
         final states = w.reviewMode
             ? [
                 for (var i = 0; i < w.statuses.length; i++)
@@ -339,6 +345,7 @@ class _MushafRevealViewState extends State<MushafRevealView> {
               style,
               states,
               brightness,
+              centeredWidth,
             ),
           );
         }
@@ -378,9 +385,13 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     TextStyle style,
     List<LiveWordViewState> states,
     Brightness brightness,
+    double centeredWidth,
   ) {
     if (units.isEmpty) {
-      return SizedBox(key: ValueKey('mushaf-line-$row'), height: pitch);
+      return SizedBox(
+          key: ValueKey('mushaf-line-$row'),
+          height: pitch,
+          child: _lineRule(const SizedBox.expand()));
     }
     final w = widget;
     final children = <Widget>[];
@@ -398,7 +409,9 @@ class _MushafRevealViewState extends State<MushafRevealView> {
             unit.label != null
                 ? TextSpan(
                     text: text,
-                    style: TextStyle(color: w.mushaf.accent),
+                    style: TextStyle(
+                        color:
+                            w.mushaf.isDark ? w.mushaf.text : w.mushaf.accent),
                   )
                 : _wordSpan(
                     unit.index,
@@ -432,22 +445,45 @@ class _MushafRevealViewState extends State<MushafRevealView> {
       key: ValueKey('mushaf-line-$row'),
       width: width,
       height: pitch,
-      child: FittedBox(
-        fit: w.centeredLines ? BoxFit.contain : BoxFit.fill,
+      child: _lineRule(Center(
         child: SizedBox(
-          width: naturalWidth,
-          height: w.fontSize * MushafRevealView.baseLineHeight,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            textDirection: TextDirection.rtl,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: children,
+          width: width,
+          // Opening pages keep their eight slots, but their ink has the same
+          // height as ordinary pages. Every opening row shares one transform.
+          height: w.centeredLines ? pitch * w.lineCount / 15 : pitch,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            child: SizedBox(
+              width: w.centeredLines ? centeredWidth : naturalWidth,
+              height: w.fontSize * MushafRevealView.baseLineHeight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: w.centeredLines
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                textDirection: TextDirection.rtl,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: children,
+              ),
+            ),
           ),
         ),
-      ),
+      )),
     );
   }
+
+  Widget _lineRule(Widget child) => DecoratedBox(
+        decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(
+          color: widget.mushaf.isDark
+              ? widget.mushaf.text.withValues(alpha: .045)
+              : Colors.transparent,
+          width: .5,
+        ))),
+        child: child,
+      );
 
   /// One word of the paragraph, styled per the Mushaf word-state spec:
   ///   unspoken  -> plain book ink (ghost ink on the review page)
@@ -476,7 +512,7 @@ class _MushafRevealViewState extends State<MushafRevealView> {
                 ? w.mushaf.ghostInk
                 : w.mushaf.text;
     final Color? wash = isActive
-        ? w.mushaf.activeTint
+        ? (w.mushaf.isDark ? null : w.mushaf.activeTint)
         : (isCorrect ? w.mushaf.correctTint : null);
 
     final style = TextStyle(
@@ -522,6 +558,20 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     );
   }
 
+  Color _nightTajweedColor(String rule) => switch (rule) {
+        'ghunnah' || 'qalaqah' => const Color(0xFF28B8D6),
+        'ikhafa' || 'ikhafa_shafawi' => const Color(0xFFF063BD),
+        'iqlab' => const Color(0xFFF4A45D),
+        'idgham_ghunnah' ||
+        'idgham_wo_ghunnah' ||
+        'idgham_shafawi' ||
+        'idgham_mutajanisayn' =>
+          const Color(0xFFBE7AE6),
+        'ham_wasl' => const Color(0xFFAEB8B8),
+        'normal' => widget.mushaf.text,
+        _ => const Color(0xFF40C98C),
+      };
+
   /// Paints the word with each tajweed rule's colour on exactly the letters it
   /// covers (offsets are word-relative). Mirrors the Surah reader's per-letter
   /// tajweed rendering so the live canvas and the reader look identical.
@@ -552,10 +602,9 @@ class _MushafRevealViewState extends State<MushafRevealView> {
           style: rule == null
               ? null
               : TextStyle(
-                  color: AppTheme.ensureContrast(
-                    AppTheme.getTajweedColor(rule),
-                    brightness,
-                  ),
+                  color: brightness == Brightness.dark
+                      ? _nightTajweedColor(rule)
+                      : AppTheme.getTajweedColor(rule),
                 ),
         ),
       );

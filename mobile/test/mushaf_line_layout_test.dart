@@ -131,6 +131,34 @@ void main() {
     expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
   });
 
+  testWidgets('opening lines share a scale and regular-page glyph height',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+            body: MushafRevealView(
+      words: ['بِسْمِ', 'ٱللَّهِ', 'ٱلرَّحْمَٰنِ', 'ٱلرَّحِيمِ'],
+      statuses: [],
+      lineNumbers: [2, 2, 3, 3],
+      centeredLines: true,
+      lineCount: 8,
+      minimumHeight: 560,
+      mushaf: MushafTheme.night,
+    ))));
+    final paragraphs = mushafParagraphElements(tester).toList();
+    final first =
+        (paragraphs.first.renderObject! as RenderBox).getTransformTo(null);
+    final last =
+        (paragraphs.last.renderObject! as RenderBox).getTransformTo(null);
+    expect(first.entry(0, 0), closeTo(last.entry(0, 0), 0.00001));
+    expect(first.entry(1, 1), closeTo(last.entry(1, 1), 0.00001));
+    expect(first.entry(1, 1),
+        closeTo((560 / 15) / (32 * MushafRevealView.baseLineHeight), 0.00001));
+    expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
+  });
+
   testWidgets('scaled cursor and Hifz keep the same word geometry',
       (tester) async {
     final anchor = GlobalKey();

@@ -7,7 +7,9 @@ separation comes only from the Hafs glyph side bearings. No spacer widgets or
 text separators are inserted, and no available width is distributed into gaps.
 Visible Arabic ink is enlarged by 15% within the fixed row pitch by reducing
 the natural line leading from 1.55 to 1.55 / 1.15. Horizontal fitting retains
-the printed margins and text order.
+the printed margins and text order. Opening rows share a single horizontal
+transform and use the same glyph height as ordinary pages, preserving their
+centered text without enlarging short lines independently.
 Tajweed spans, Hifz visibility, live verdicts, mistake taps and cursor anchors
 use the same geometry before and after a state update.
 
@@ -24,6 +26,12 @@ their eight-slot opening layout and centered text. Surah ranges can span
 multiple sheets without shrinking all their rows into one viewport. The
 renderer retains a measured fallback for callers without printed metadata;
 production recitation pages always supply the bundled locations.
+
+The default recitation appearance uses charcoal paper, white verse markers,
+vivid Tajweed colours and an emerald gradient microphone with a soft halo.
+Dark pages have faint row rules and no enclosing page frame.
+Stored theme and Tajweed choices remain respected. The four paper presets are
+still available in appearance settings.
 
 Verification:
 

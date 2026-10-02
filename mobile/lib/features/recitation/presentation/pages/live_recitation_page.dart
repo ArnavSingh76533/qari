@@ -97,7 +97,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// Whether to colour tajweed rules on the revealed (correct) words, like the
   /// Surah reader. Persisted across sessions.
-  bool _tajweedOn = false;
+  bool _tajweedOn = true;
 
   /// Flat target word array across all ayahs being recited (the whole
   /// page/surah). Used to drive the backend reference + the results grid.
@@ -237,7 +237,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }
 
   Future<void> _loadAppearancePreferences() async {
-    final enabled = await LocalStorageService().getTajweedColorsEnabled();
+    final enabled = await LocalStorageService().getTajweedColorsEnabled(defaultValue: true);
     if (mounted) setState(() => _tajweedOn = enabled);
   }
 
@@ -900,7 +900,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
                                 color: mushaf.text,
                                 height: 1.2,
                               ),
@@ -915,12 +916,14 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: mushaf.text.withValues(alpha: 0.6),
+                          color: mushaf.text.withValues(alpha: 0.65),
+                          fontSize: 10,
                         ),
                       ),
                       Text(_mode.label,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: mushaf.accent,
+                            fontSize: 9,
                             fontWeight: FontWeight.w600,
                           )),
                     ],
@@ -939,7 +942,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.palette_outlined),
+            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Mushaf appearance',
             onPressed: () => _showAppearance(mushaf),
           ),
@@ -1034,14 +1037,14 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final paperHeight = math.max(0.0, constraints.maxHeight - 8);
-        final textHeight = math.max(0.0, paperHeight - 34.8);
+        final textHeight = math.max(0.0, paperHeight - (mushaf.isDark ? 8 : 34.8));
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           // Tap anywhere on the page: hide / show the top and bottom chrome.
           onTap: () => setState(() => _chromeVisible = !_chromeVisible),
           child: SingleChildScrollView(
             controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: mushaf.isDark ? 0 : 6, vertical: 4),
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -1050,7 +1053,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 ),
                 child: MushafPageFrame(
                   theme: mushaf,
-                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+                  showBorder: !mushaf.isDark,
+                  padding: EdgeInsets.fromLTRB(8, mushaf.isDark ? 4 : 10, 8, mushaf.isDark ? 4 : 10),
                   child:
                       _loadingPage || _words.isEmpty || _revealedWords.isEmpty
                           ? Padding(
