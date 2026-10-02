@@ -179,9 +179,9 @@ class LocalStorageService {
   }
 
   // ─── Tajweed Colors ──────────────────────────────────────────────────────
-  Future<bool> getTajweedColorsEnabled() async {
+  Future<bool> getTajweedColorsEnabled({bool defaultValue = false}) async {
     await ensureInitialized();
-    return _prefs.getBool(_kTajweedColorsEnabled) ?? false;
+    return _prefs.getBool(_kTajweedColorsEnabled) ?? defaultValue;
   }
 
   Future<void> setTajweedColorsEnabled(bool value) async {

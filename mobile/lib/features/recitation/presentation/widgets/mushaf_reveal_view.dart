@@ -10,39 +10,12 @@ import '../../../../data/models/word_model.dart';
 import '../mushaf/mushaf_theme.dart';
 import '../word_view_state.dart';
 
-/// A continuous, book-like (Mushaf) render of the recitation target.
-///
-/// The whole page body is ONE justified right-to-left paragraph — a single
-/// [Text.rich] whose spans are the words, the natural inter-word spaces and
-/// the inline ayah medallions — exactly like a printed Madinah Mushaf:
-///
-///   * words sit tightly next to each other, separated only by the font's own
-///     space glyph (no per-word widgets, no `Wrap` spacing, no spacers);
-///   * every line is stretched flush to both margins by `TextAlign.justify`,
-///     so the left and right edges of the block are straight;
-///   * everything is set in the KFGQPC Uthmanic Script HAFS face, including
-///     the ayah medallion (the verse number in Arabic-Indic digits), which
-///     the font draws as the ornate end-of-ayah mark with the number inside.
-///
-/// Live verdicts only recolour spans in place, so the layout never shifts.
-///
-/// Two reading modes decide how an unspoken word looks:
-///   * Tilawat (default) — the full page is visible in crisp book ink.
-///   * Hifz ([hideUnspoken]) — unspoken words are fully transparent but keep
-///     their exact size, so revealing a word never reflows the line. The ayah
-///     medallions stay visible to guide the reciter.
-///
-/// Surah openings ([blocksBefore]) are full-width widgets that always start a
-/// fresh line, so the body is split into one justified paragraph per surah
-/// segment; a page inside a single surah is literally one `Text.rich`.
-///
-/// A stable [cursorKey] is attached to a zero-size anchor positioned at the
-/// top-right corner of the cursor word (measured from the paragraph's own
-/// glyph boxes, never by inserting anything into the text), so the parent
-/// page can auto-scroll the active word back into the upper half of the
-/// viewport. [caretKey] is a fallback anchor at the end of the sheet.
+/// A Madinah page rendered as independently fitted RTL lines.
+/// Printed line metadata is independent of viewport size and live verdicts.
+/// Each line scales its entire natural word row; separation comes only from
+/// glyph side bearings plus a small font-derived inter-word gap.
 class MushafRevealView extends StatefulWidget {
-  /// Words revealed so far, in recitation order. Starts empty → blank canvas.
+  /// Complete immutable page words, in recitation order.
   final List<String> words;
 
   /// Per-word live status, aligned 1:1 with [words]. Only used for tinting
@@ -83,6 +56,15 @@ class MushafRevealView extends StatefulWidget {
   /// ([minimumHeight] == 0).
   final double fontSize;
 
+  /// Printed row numbers, aligned with words and ayah boundaries respectively.
+  /// Surah ranges may use absolute row numbers across multiple pages.
+  final List<int> lineNumbers;
+  final List<int> ayahLineNumbers;
+
+  /// Number of printed slots. Opening pages use eight; regular pages use 15.
+  final int lineCount;
+  final bool centeredLines;
+
   /// Anchor key for the end of the sheet, used only while no word is active.
   final Key? caretKey;
 
@@ -110,12 +92,10 @@ class MushafRevealView extends StatefulWidget {
   /// surah boundary opens the new surah inline, like a printed Mushaf.
   final Map<int, Widget> blocksBefore;
 
-  /// Available paper height. When > 0 the font size is chosen so the whole
-  /// page fits the sheet, and the line pitch is then opened up so the lines
-  /// spread evenly over the paper like the fixed 15-line Madinah layout.
+  /// Available paper height, divided into equal printed row slots.
   final double minimumHeight;
 
-  /// Heights of the [blocksBefore] widgets, used when fitting the page.
+  /// Heights used for openings in the fallback layout without printed rows.
   final Map<int, double> blockHeights;
 
   const MushafRevealView({
@@ -129,6 +109,10 @@ class MushafRevealView extends StatefulWidget {
     this.tajweedSpans = const [],
     this.tajweedEnabled = false,
     this.fontSize = 32,
+    this.lineNumbers = const [],
+    this.ayahLineNumbers = const [],
+    this.lineCount = 15,
+    this.centeredLines = false,
     this.caretKey,
     this.cursorKey,
     this.reviewMode = false,
@@ -139,19 +123,13 @@ class MushafRevealView extends StatefulWidget {
     this.blockHeights = const {},
   });
 
-  /// Natural line pitch of the Uthmanic face: tight enough to read as a solid
-  /// block, loose enough for the stacked harakat and the ayah medallions.
-  static const double baseLineHeight = 1.7;
+  /// Base ink enlargement before reserving inter-line breathing room.
+  /// Changing fontSize alone is cancelled by the fitted line transform.
+  static const double glyphScale = 1.15;
+  static const double baseLineHeight = 1.55 / glyphScale;
 
-  /// Widest the line pitch is allowed to open when spreading a short page.
-  static const double _maxLineHeight = 3.0;
-
-  static const double _minFontSize = 13;
-  static const double _maxFontSize = 48;
-  static const double _defaultBlockHeight = 92;
-
-  static final Map<String, ({double fontSize, double lineHeight})> _fitCache =
-      {};
+  /// Five percent above and below the fitted text keeps adjacent lines apart.
+  static const double lineInkFraction = .90;
 
   @override
   State<MushafRevealView> createState() => _MushafRevealViewState();
@@ -184,11 +162,11 @@ String toArabicIndicDigits(String western) {
   return out.toString();
 }
 
-/// A run of consecutive words rendered as one justified paragraph.
-class _Segment {
-  final int start;
-  final int end; // exclusive
-  const _Segment(this.start, this.end);
+class _LineUnit {
+  const _LineUnit.word(this.index) : label = null;
+  const _LineUnit.marker(this.index, this.label);
+  final int index;
+  final String? label;
 }
 
 class _MushafRevealViewState extends State<MushafRevealView> {
@@ -201,262 +179,343 @@ class _MushafRevealViewState extends State<MushafRevealView> {
   }
 
   void _disposeRecognizers() {
-    for (final r in _recognizers) {
-      r.dispose();
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
     }
     _recognizers.clear();
   }
 
-  String? _labelForBoundary(int wordIndex) {
+  TextStyle _baseStyle(double size) => AppTheme.arabicTextStyle(
+        fontSize: size,
+        color: widget.mushaf.text,
+      ).copyWith(
+        height: MushafRevealView.baseLineHeight,
+        letterSpacing: 0,
+        wordSpacing: 0,
+        leadingDistribution: TextLeadingDistribution.even,
+      );
+
+  String _unitText(_LineUnit unit) => unit.label == null
+      ? mushafDisplayText(widget.words[unit.index])
+      : ayahMarkerText(unit.label!);
+
+  double _advance(String text, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.rtl,
+      textScaler: TextScaler.noScaling,
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
+  // A fraction of the font's natural space separates words without leaving
+  // the large holes produced by paragraph justification. The complete row,
+  // including this fixed advance, is transformed by the same FittedBox.
+  double _wordGap(TextStyle style) =>
+      _advance(String.fromCharCode(0x20), style) * 0.40;
+
+  Map<int, List<_LineUnit>> _pageLines(double width, TextStyle style) {
     final w = widget;
-    if (w.ayahBoundaries.isEmpty || w.ayahLabels.isEmpty) return null;
-    final pos = w.ayahBoundaries.indexOf(wordIndex);
-    return pos >= 0 && pos < w.ayahLabels.length ? w.ayahLabels[pos] : null;
-  }
-
-  /// Splits the page at every surah opening so each block sits on its own
-  /// line between two justified paragraphs.
-  List<_Segment> _segments() {
-    final n = widget.words.length;
-    final cuts = widget.blocksBefore.keys.where((i) => i > 0 && i < n).toList()
-      ..sort();
-    final out = <_Segment>[];
-    var start = 0;
-    for (final cut in cuts) {
-      out.add(_Segment(start, cut));
-      start = cut;
-    }
-    out.add(_Segment(start, n));
-    return out;
-  }
-
-  /// The paragraph's plain text (words, spaces, medallions) for [segment].
-  String _segmentText(_Segment segment) {
-    final buf = StringBuffer();
-    for (var i = segment.start; i < segment.end; i++) {
-      if (i > segment.start) buf.write(' ');
-      buf.write(mushafDisplayText(widget.words[i]));
-      final label = _labelForBoundary(i);
-      if (label != null) {
-        buf.write(' ');
-        buf.write(ayahMarkerText(label));
+    final canonical = w.lineNumbers.length == w.words.length &&
+        w.lineNumbers.every((line) => line > 0);
+    final rows = <int, List<_LineUnit>>{};
+    final markers = <int, int>{
+      for (var i = 0;
+          i < w.ayahBoundaries.length && i < w.ayahLabels.length;
+          i++)
+        w.ayahBoundaries[i]: i,
+    };
+    var row = 1;
+    var occupied = 0.0;
+    final gap = _wordGap(style);
+    for (var i = 0; i < w.words.length; i++) {
+      final markerIndex = markers[i];
+      if (canonical) {
+        row = w.lineNumbers[i];
+      } else {
+        if (w.blocksBefore.containsKey(i) && occupied > 0) {
+          row++;
+          occupied = 0;
+        }
+        final advance = _advance(mushafDisplayText(w.words[i]), style) +
+            (markerIndex == null
+                ? 0
+                : gap +
+                    _advance(
+                      ayahMarkerText(w.ayahLabels[markerIndex]),
+                      style,
+                    ));
+        if (occupied > 0 && occupied + gap + advance > width) {
+          row++;
+          occupied = 0;
+        }
+        occupied += (occupied > 0 ? gap : 0) + advance;
+      }
+      rows.putIfAbsent(row, () => []).add(_LineUnit.word(i));
+      if (markerIndex != null) {
+        final markerRow = canonical && markerIndex < w.ayahLineNumbers.length
+            ? w.ayahLineNumbers[markerIndex]
+            : row;
+        rows
+            .putIfAbsent(markerRow, () => [])
+            .add(_LineUnit.marker(i, w.ayahLabels[markerIndex]));
       }
     }
-    return buf.toString();
-  }
-
-  TextStyle _baseStyle(BuildContext context, double size, double lineHeight) {
-    // Start from the app's Quran style (Uthmanic Hafs face, zero letter
-    // spacing) and resolve it against the ambient DefaultTextStyle, so the
-    // paragraph we measure is byte-for-byte the paragraph we paint.
-    final base =
-        AppTheme.arabicTextStyle(fontSize: size, color: widget.mushaf.text)
-            .copyWith(
-      fontSize: size,
-      height: lineHeight,
-      letterSpacing: 0,
-      wordSpacing: 0,
-      leadingDistribution: TextLeadingDistribution.even,
-    );
-    return DefaultTextStyle.of(context).style.merge(base);
+    return rows;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.words.isEmpty) return const SizedBox.shrink();
-    return LayoutBuilder(builder: (context, constraints) {
-      final fit = _fitPage(context, constraints.maxWidth);
-      return _buildPage(context, fit.fontSize, fit.lineHeight);
-    });
-  }
-
-  // ── Page fitting ───────────────────────────────────────────────────────
-
-  /// Measures the real paragraphs (same text, same face, same width) rather
-  /// than guessing from character counts. Quran text and verse order never
-  /// change, so the result is cached per page/width.
-  ({double fontSize, double lineHeight}) _fitPage(
-      BuildContext context, double width) {
     final w = widget;
-    if (w.minimumHeight <= 0 || !width.isFinite) {
-      return (
-        fontSize: w.fontSize,
-        lineHeight: MushafRevealView.baseLineHeight
-      );
-    }
-    final scaler = MediaQuery.textScalerOf(context);
-    final segments = _segments();
-    final cacheKey = [
-      w.words.join('\u0000'),
-      w.ayahBoundaries.join(','),
-      w.ayahLabels.join(','),
-      w.blocksBefore.keys.join(','),
-      w.blockHeights.entries.map((e) => '${e.key}:${e.value}').join(','),
-      width,
-      w.minimumHeight,
-      scaler,
-    ].join('\u0001');
-    final cached = MushafRevealView._fitCache[cacheKey];
-    if (cached != null) return cached;
-
-    final texts = [for (final s in segments) _segmentText(s)];
-    double heightAt(double size, double lineHeight) {
-      final style = _baseStyle(context, size, lineHeight);
-      var total = 0.0;
-      for (final text in texts) {
-        final painter = TextPainter(
-          text: TextSpan(text: text, style: style),
-          textDirection: TextDirection.rtl,
-          textAlign: TextAlign.justify,
-          textScaler: scaler,
-        )..layout(maxWidth: width);
-        total += painter.height;
-        painter.dispose();
-      }
-      for (final i in w.blocksBefore.keys) {
-        total += w.blockHeights[i] ?? MushafRevealView._defaultBlockHeight;
-      }
-      return total;
-    }
-
-    // 1. The largest face that fits the sheet at the natural line pitch.
-    var low = MushafRevealView._minFontSize;
-    var high = MushafRevealView._maxFontSize;
-    for (var i = 0; i < 7; i++) {
-      final mid = (low + high) / 2;
-      if (heightAt(mid, MushafRevealView.baseLineHeight) <= w.minimumHeight) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-    }
-    final size = low;
-
-    // 2. Open the line pitch so the lines spread evenly over the paper.
-    var lhLow = MushafRevealView.baseLineHeight;
-    var lhHigh = MushafRevealView._maxLineHeight;
-    for (var i = 0; i < 6; i++) {
-      final mid = (lhLow + lhHigh) / 2;
-      if (heightAt(size, mid) <= w.minimumHeight) {
-        lhLow = mid;
-      } else {
-        lhHigh = mid;
-      }
-    }
-
-    final fit = (fontSize: size, lineHeight: lhLow);
-    if (MushafRevealView._fitCache.length >= 8) {
-      MushafRevealView._fitCache.remove(MushafRevealView._fitCache.keys.first);
-    }
-    MushafRevealView._fitCache[cacheKey] = fit;
-    return fit;
-  }
-
-  // ── Rendering ──────────────────────────────────────────────────────────
-
-  Widget _buildPage(BuildContext context, double size, double lineHeight) {
-    final w = widget;
-    _disposeRecognizers();
-
-    // Every word's final look is decided by [resolveWordViewState], never by
-    // [LiveWordStatus] alone — that is what guarantees a word ahead of the
-    // cursor can never be painted as a mistake.
-    final viewStates = w.reviewMode
-        ? <LiveWordViewState>[
-            for (var i = 0; i < w.statuses.length; i++)
-              resolveReviewWordViewState(
-                serverStatus: w.statuses[i],
-                index: i,
-                reach: w.cursor,
+    if (w.words.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _disposeRecognizers();
+        final width = constraints.maxWidth;
+        final style = _baseStyle(w.fontSize);
+        final rows = _pageLines(width, style);
+        final first = rows.keys.reduce((a, b) => a < b ? a : b);
+        final last = rows.keys.reduce((a, b) => a > b ? a : b);
+        final canonical = w.lineNumbers.length == w.words.length;
+        final startRow = canonical && first <= w.lineCount ? 1 : first;
+        final endRow = canonical && last <= w.lineCount ? w.lineCount : last;
+        final count = endRow - startRow + 1;
+        // Larger accessibility text grows the sheet and remains scrollable.
+        final scale =
+            MediaQuery.textScalerOf(context).scale(w.fontSize) / w.fontSize;
+        final slotsPerSheet = count > w.lineCount ? w.lineCount : count;
+        final pitch = w.minimumHeight > 0
+            ? (w.minimumHeight / slotsPerSheet) * scale
+            : w.fontSize * MushafRevealView.baseLineHeight * scale;
+        final centeredWidth = w.centeredLines
+            ? rows.values
+                .map((units) =>
+                    units.fold<double>(0,
+                        (sum, unit) => sum + _advance(_unitText(unit), style)) +
+                    (units.length - 1) * _wordGap(style))
+                .reduce((a, b) => a > b ? a : b)
+            : 0.0;
+        final states = w.reviewMode
+            ? [
+                for (var i = 0; i < w.statuses.length; i++)
+                  resolveReviewWordViewState(
+                    serverStatus: w.statuses[i],
+                    index: i,
+                    reach: w.cursor,
+                  ),
+              ]
+            : resolveWordViewStates(statuses: w.statuses, cursor: w.cursor);
+        final brightness = w.mushaf.isDark ? Brightness.dark : Brightness.light;
+        final openings = <int, (Widget, int)>{};
+        for (final entry in w.blocksBefore.entries) {
+          if (entry.key >= w.words.length) continue;
+          final wordRow = canonical
+              ? w.lineNumbers[entry.key]
+              : rows.entries
+                  .firstWhere(
+                    (e) => e.value.any(
+                      (unit) => unit.label == null && unit.index == entry.key,
+                    ),
+                  )
+                  .key;
+          var vacant = wordRow - 1;
+          while (vacant >= startRow && !rows.containsKey(vacant)) {
+            vacant--;
+          }
+          final slots = wordRow - vacant - 1;
+          openings[slots > 0 ? vacant + 1 : wordRow] = (entry.value, slots);
+        }
+        final children = <Widget>[];
+        for (var row = startRow; row <= endRow; row++) {
+          final opening = openings[row];
+          if (opening != null) {
+            final (block, slots) = opening;
+            children.add(
+              SizedBox(
+                height: slots > 0
+                    ? pitch * slots
+                    : (w.blockHeights[rows[row]?.first.index] ?? 80),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(width: width, child: block),
+                ),
               ),
-          ]
-        : resolveWordViewStates(statuses: w.statuses, cursor: w.cursor);
-
-    final style = _baseStyle(context, size, lineHeight);
-    final brightness = w.mushaf.isDark ? Brightness.dark : Brightness.light;
-    final hasCursor = !w.reviewMode &&
-        w.cursorKey != null &&
-        w.cursor >= 0 &&
-        w.cursor < w.words.length;
-
-    final children = <Widget>[];
-    for (final segment in _segments()) {
-      final block = w.blocksBefore[segment.start];
-      if (block != null) children.add(block);
-
-      final spans = <InlineSpan>[];
-      var offset = 0;
-      TextRange? cursorRange;
-      for (var i = segment.start; i < segment.end; i++) {
-        if (i > segment.start) {
-          spans.add(const TextSpan(text: ' '));
-          offset += 1;
-        }
-        final viewState =
-            i < viewStates.length ? viewStates[i] : LiveWordViewState.unspoken;
-        if (hasCursor && i == w.cursor) {
-          cursorRange =
-              TextRange(start: offset, end: offset + w.words[i].length);
-        }
-        spans.add(_wordSpan(i, viewState, brightness));
-        offset += w.words[i].length;
-        final label = _labelForBoundary(i);
-        if (label != null) {
-          final marker = ayahMarkerText(label);
-          spans.add(const TextSpan(text: ' '));
-          spans.add(TextSpan(
-            text: marker,
-            style: TextStyle(color: w.mushaf.accent),
-          ));
-          offset += 1 + marker.length;
-        }
-      }
-
-      // The paragraph: one justified RTL block, flush at both margins.
-      final paragraph = Text.rich(
-        TextSpan(style: style, children: spans),
-        style: style,
-        textAlign: TextAlign.justify,
-        textDirection: TextDirection.rtl,
-        softWrap: true,
-      );
-      children.add(cursorRange == null
-          ? paragraph
-          : _AnchoredParagraph(
-              anchorRange: cursorRange,
-              anchor: SizedBox(key: w.cursorKey, width: 0, height: 0),
-              child: paragraph,
-            ));
-    }
-
-    final body = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
-    );
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Stack(
-        fit: StackFit.passthrough,
-        clipBehavior: Clip.none,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(minHeight: w.minimumHeight),
-            child: body,
-          ),
-          // A positioned fallback measures the end of the sheet without
-          // adding a line or shifting words when listening starts.
-          if (w.caretKey != null && !hasCursor)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              child: SizedBox(key: w.caretKey, width: 0, height: 0),
+            );
+            if (slots > 0) {
+              row += slots - 1;
+              continue;
+            }
+          }
+          children.add(
+            _buildMushafLine(
+              row,
+              rows[row] ?? const [],
+              width,
+              pitch,
+              style,
+              states,
+              brightness,
+              centeredWidth,
             ),
-        ],
-      ),
+          );
+        }
+        final hasCursor = !w.reviewMode &&
+            w.cursorKey != null &&
+            w.cursor >= 0 &&
+            w.cursor < w.words.length;
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Stack(
+            fit: StackFit.passthrough,
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+              if (w.caretKey != null && !hasCursor)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  child: SizedBox(key: w.caretKey, width: 0, height: 0),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
+
+  Widget _buildMushafLine(
+    int row,
+    List<_LineUnit> units,
+    double width,
+    double pitch,
+    TextStyle style,
+    List<LiveWordViewState> states,
+    Brightness brightness,
+    double centeredWidth,
+  ) {
+    if (units.isEmpty) {
+      return SizedBox(
+          key: ValueKey('mushaf-line-$row'),
+          height: pitch,
+          child: _lineRule(const SizedBox.expand()));
+    }
+    final w = widget;
+    final children = <Widget>[];
+    var naturalWidth = 0.0;
+    final gap = _wordGap(style);
+    for (var n = 0; n < units.length; n++) {
+      final unit = units[n];
+      if (n > 0) {
+        children.add(SizedBox(width: gap));
+        naturalWidth += gap;
+      }
+      final text = _unitText(unit);
+      final advance = _advance(text, style);
+      naturalWidth += advance;
+      Widget word = RichText(
+        key: ValueKey('mushaf-unit-${unit.index}-${unit.label ?? "word"}'),
+        text: TextSpan(
+          style: style,
+          children: [
+            unit.label != null
+                ? TextSpan(
+                    text: text,
+                    style: TextStyle(
+                        color:
+                            w.mushaf.isDark ? w.mushaf.text : w.mushaf.accent),
+                  )
+                : _wordSpan(
+                    unit.index,
+                    unit.index < states.length
+                        ? states[unit.index]
+                        : LiveWordViewState.unspoken,
+                    brightness,
+                  ),
+          ],
+        ),
+        textDirection: TextDirection.rtl,
+        softWrap: false,
+        maxLines: 1,
+      );
+      if (unit.label == null &&
+          !w.reviewMode &&
+          unit.index == w.cursor &&
+          w.cursorKey != null) {
+        word = _AnchoredParagraph(
+          anchorRange: TextRange(start: 0, end: text.length),
+          anchor: SizedBox(key: w.cursorKey, width: 0, height: 0),
+          child: word,
+        );
+      }
+      children.add(SizedBox(width: advance, child: word));
+    }
+    // BoxFit.fill makes the complete row flush horizontally, while its
+    // natural height maps inside the fixed line pitch with vertical clearance.
+    // No word can wrap or detach
+    // its harakat. FittedBox also transforms hit testing and cursor anchors.
+    return SizedBox(
+      key: ValueKey('mushaf-line-$row'),
+      width: width,
+      height: pitch,
+      child: _lineRule(Center(
+        child: SizedBox(
+          width: width,
+          // Opening pages keep their eight slots, but their ink has the same
+          // height as ordinary pages. Every opening row shares one transform.
+          key: ValueKey('mushaf-line-content-$row'),
+          height: (w.centeredLines ? pitch * w.lineCount / 15 : pitch) *
+              MushafRevealView.lineInkFraction,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            child: SizedBox(
+              width: w.centeredLines ? centeredWidth : naturalWidth,
+              height: w.fontSize * MushafRevealView.baseLineHeight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: w.centeredLines
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                textDirection: TextDirection.rtl,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: children,
+              ),
+            ),
+          ),
+        ),
+      )),
+    );
+  }
+
+  Widget _lineRule(Widget child) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: widget.mushaf.isDark
+              ? Colors.black.withValues(alpha: .045)
+              : null,
+          border: Border(
+            top: BorderSide(
+              color: widget.mushaf.isDark
+                  ? Colors.black.withValues(alpha: .45)
+                  : Colors.transparent,
+              width: .5,
+            ),
+            bottom: BorderSide(
+              color: widget.mushaf.isDark
+                  ? widget.mushaf.text.withValues(alpha: .07)
+                  : Colors.transparent,
+              width: .5,
+            ),
+          ),
+        ),
+        child: child,
+      );
 
   /// One word of the paragraph, styled per the Mushaf word-state spec:
   ///   unspoken  -> plain book ink (ghost ink on the review page)
@@ -485,7 +544,7 @@ class _MushafRevealViewState extends State<MushafRevealView> {
                 ? w.mushaf.ghostInk
                 : w.mushaf.text;
     final Color? wash = isActive
-        ? w.mushaf.activeTint
+        ? (w.mushaf.isDark ? null : w.mushaf.activeTint)
         : (isCorrect ? w.mushaf.correctTint : null);
 
     final style = TextStyle(
@@ -501,8 +560,9 @@ class _MushafRevealViewState extends State<MushafRevealView> {
       shadows: isActive && !hidden
           ? [
               Shadow(
-                  color: w.mushaf.accent.withValues(alpha: 0.55),
-                  blurRadius: 12)
+                color: w.mushaf.accent.withValues(alpha: 0.55),
+                blurRadius: 12,
+              ),
             ]
           : null,
     );
@@ -530,11 +590,28 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     );
   }
 
+  Color _nightTajweedColor(String rule) => switch (rule) {
+        'ghunnah' || 'qalaqah' => const Color(0xFF28B8D6),
+        'ikhafa' || 'ikhafa_shafawi' => const Color(0xFFF063BD),
+        'iqlab' => const Color(0xFFF4A45D),
+        'idgham_ghunnah' ||
+        'idgham_wo_ghunnah' ||
+        'idgham_shafawi' ||
+        'idgham_mutajanisayn' =>
+          const Color(0xFFBE7AE6),
+        'ham_wasl' => const Color(0xFFAEB8B8),
+        'normal' => widget.mushaf.text,
+        _ => const Color(0xFF40C98C),
+      };
+
   /// Paints the word with each tajweed rule's colour on exactly the letters it
   /// covers (offsets are word-relative). Mirrors the Surah reader's per-letter
   /// tajweed rendering so the live canvas and the reader look identical.
   List<TextSpan> _tajweedRuns(
-      String text, List<TajweedSpan> spans, Brightness brightness) {
+    String text,
+    List<TajweedSpan> spans,
+    Brightness brightness,
+  ) {
     final ruleAt = List<String?>.filled(text.length, null);
     for (final span in spans) {
       final start = span.start.clamp(0, text.length);
@@ -551,14 +628,18 @@ class _MushafRevealViewState extends State<MushafRevealView> {
       while (j < text.length && ruleAt[j] == rule) {
         j++;
       }
-      runs.add(TextSpan(
-        text: text.substring(i, j),
-        style: rule == null
-            ? null
-            : TextStyle(
-                color: AppTheme.ensureContrast(
-                    AppTheme.getTajweedColor(rule), brightness)),
-      ));
+      runs.add(
+        TextSpan(
+          text: text.substring(i, j),
+          style: rule == null
+              ? null
+              : TextStyle(
+                  color: brightness == Brightness.dark
+                      ? _nightTajweedColor(rule)
+                      : AppTheme.getTajweedColor(rule),
+                ),
+        ),
+      );
       i = j;
     }
     return runs;
@@ -586,7 +667,9 @@ class _AnchoredParagraph extends MultiChildRenderObjectWidget {
 
   @override
   void updateRenderObject(
-      BuildContext context, _RenderAnchoredParagraph renderObject) {
+    BuildContext context,
+    _RenderAnchoredParagraph renderObject,
+  ) {
     renderObject.anchorRange = anchorRange;
   }
 }
@@ -660,7 +743,9 @@ class _RenderAnchoredParagraph extends RenderBox
     }
     final boxes = paragraph.getBoxesForSelection(
       TextSelection(
-          baseOffset: _anchorRange.start, extentOffset: _anchorRange.end),
+        baseOffset: _anchorRange.start,
+        extentOffset: _anchorRange.end,
+      ),
       boxHeightStyle: ui.BoxHeightStyle.max,
     );
     if (boxes.isEmpty) return Offset.zero;

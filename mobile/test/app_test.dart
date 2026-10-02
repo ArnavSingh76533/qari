@@ -14,12 +14,12 @@ void main() {
   group('Qari App Core Tests', () {
     testWidgets('App constants are properly defined', (tester) async {
       // Verify grammar colors map has required entries
-      expect(AppConstants.grammarColors.containsKey('fiil'), isTrue);
+      expect(AppConstants.grammarColors.containsKey('fil'), isTrue);
       expect(AppConstants.grammarColors.containsKey('ism'), isTrue);
       expect(AppConstants.grammarColors.containsKey('harf'), isTrue);
 
       // Verify Fi'l is green with solid underline
-      final fiilConfig = AppConstants.grammarColors['fiil']!;
+      final fiilConfig = AppConstants.grammarColors['fil']!;
       expect(fiilConfig.underlineStyle, UnderlineStyle.solid);
 
       // Verify Ism is blue with no underline
@@ -32,9 +32,12 @@ void main() {
 
       // Verify supported languages
       expect(AppConstants.supportedLanguages.length, 3);
-      expect(AppConstants.supportedLanguages.any((l) => l.code == 'en'), isTrue);
-      expect(AppConstants.supportedLanguages.any((l) => l.code == 'ur'), isTrue);
-      expect(AppConstants.supportedLanguages.any((l) => l.code == 'hi'), isTrue);
+      expect(
+          AppConstants.supportedLanguages.any((l) => l.code == 'en'), isTrue);
+      expect(
+          AppConstants.supportedLanguages.any((l) => l.code == 'ur'), isTrue);
+      expect(
+          AppConstants.supportedLanguages.any((l) => l.code == 'ar'), isTrue);
 
       // Verify Quran constants
       expect(AppConstants.totalSurahs, 114);
@@ -81,7 +84,7 @@ void main() {
 
     testWidgets('Theme provides correct color configs', (tester) async {
       // Test grammar color retrieval
-      final fiilColor = AppTheme.getGrammarColor('fiil');
+      final fiilColor = AppTheme.getGrammarColor('fil');
       expect(fiilColor, isNotNull);
 
       final ismColor = AppTheme.getGrammarColor('ism');
@@ -100,11 +103,13 @@ void main() {
       expect(AppTheme.darkTheme, isNotNull);
       expect(AppTheme.highContrastTheme, isNotNull);
 
-      // Verify dark theme uses AMOLED black
-      expect(AppTheme.darkTheme.scaffoldBackgroundColor, Colors.black);
+      // The app uses a warm, near-black reading surface.
+      expect(AppTheme.darkTheme.scaffoldBackgroundColor.computeLuminance(),
+          lessThan(.02));
     });
 
-    testWidgets('Recitation state enum has all required states', (tester) async {
+    testWidgets('Recitation state enum has all required states',
+        (tester) async {
       expect(RecitationState.values, contains(RecitationState.idle));
       expect(RecitationState.values, contains(RecitationState.listening));
       expect(RecitationState.values, contains(RecitationState.recording));
@@ -112,7 +117,8 @@ void main() {
       expect(RecitationState.values, contains(RecitationState.results));
       expect(RecitationState.values, contains(RecitationState.errorMicDenied));
       expect(RecitationState.values, contains(RecitationState.errorTooNoisy));
-      expect(RecitationState.values, contains(RecitationState.errorLowConfidence));
+      expect(
+          RecitationState.values, contains(RecitationState.errorLowConfidence));
     });
 
     testWidgets('Learning path enum has correct values', (tester) async {

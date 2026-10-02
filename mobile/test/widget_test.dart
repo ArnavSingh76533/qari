@@ -12,7 +12,8 @@ void main() {
       // we test the structure indirectly.
 
       // Verify supported languages count matches spec
-      expect(3, 3, reason: 'Should have 3 language options: English, Urdu, Hinglish');
+      expect(3, 3,
+          reason: 'Should have 3 language options: English, Urdu, Hinglish');
     });
 
     testWidgets('Quran reader has toggle controls', (tester) async {
@@ -49,7 +50,7 @@ void main() {
 
     testWidgets('Grammar color-coding follows spec', (tester) async {
       // Fi'l (verb) = green + solid underline
-      final fiil = AppConstants.grammarColors['fiil']!;
+      final fiil = AppConstants.grammarColors['fil']!;
       expect(fiil.underlineStyle, UnderlineStyle.solid);
 
       // Ism (noun) = blue + no underline
@@ -64,17 +65,17 @@ void main() {
     testWidgets('All screens are defined', (tester) async {
       // Verify all 11 screens (S1-S11) are accounted for
       final screens = [
-        'language_select_page',     // S1
-        'path_select_page',         // S2
-        'home_page',                // S3
-        'lesson_player_page',       // S4
-        'quran_reader_page',        // S5
-        'root_explorer_page',       // S6
-        'makhraj_visualizer_page',  // S7
-        'recitation_page',          // S8
-        'flashcard_page',           // S9
-        'ask_scholar_page',         // S10
-        'profile_page',             // S11
+        'language_select_page', // S1
+        'path_select_page', // S2
+        'home_page', // S3
+        'lesson_player_page', // S4
+        'quran_reader_page', // S5
+        'root_explorer_page', // S6
+        'makhraj_visualizer_page', // S7
+        'recitation_page', // S8
+        'flashcard_page', // S9
+        'ask_scholar_page', // S10
+        'profile_page', // S11
       ];
 
       expect(screens.length, 11, reason: 'Should have 11 screens');

@@ -23,9 +23,9 @@ void main() {
       expect(MushafTheme.classic.text, const Color(0xFF1A1A1A));
       expect(MushafTheme.classic.accent, const Color(0xFFB8860B));
 
-      expect(MushafTheme.night.background, const Color(0xFF121212));
-      expect(MushafTheme.night.text, const Color(0xFFE8E6E3));
-      expect(MushafTheme.night.accent, const Color(0xFFD4A373));
+      expect(MushafTheme.night.background, const Color(0xFF181917));
+      expect(MushafTheme.night.text, const Color(0xFFF5F5F0));
+      expect(MushafTheme.night.accent, const Color(0xFF54DEA2));
 
       expect(MushafTheme.parchment.background, const Color(0xFFF4ECD8));
       expect(MushafTheme.parchment.text, const Color(0xFF2C221E));
@@ -51,10 +51,10 @@ void main() {
       expect(MushafTheme.minimal.isDark, isFalse);
     });
 
-    test('byId falls back to Classic for unknown or null ids', () {
+    test('byId falls back to Night for unknown or null ids', () {
       expect(MushafTheme.byId('night'), MushafTheme.night);
-      expect(MushafTheme.byId(null).id, 'classic');
-      expect(MushafTheme.byId('does-not-exist').id, 'classic');
+      expect(MushafTheme.byId(null).id, 'night');
+      expect(MushafTheme.byId('does-not-exist').id, 'night');
     });
 
     test('toThemeData keeps paper as scaffold background', () {
@@ -70,24 +70,24 @@ void main() {
   group('MushafThemeController persistence', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    test('defaults to Classic before load()', () {
+    test('defaults to Night before load()', () {
       final c = MushafThemeController();
-      expect(c.theme.id, 'classic');
+      expect(c.theme.id, 'night');
       expect(c.isLoaded, isFalse);
     });
 
     test('persists a selection and restores it on the next launch', () async {
       final c = MushafThemeController();
       await c.load();
-      await c.select(MushafTheme.night);
+      await c.select(MushafTheme.classic);
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('mushaf_theme_id'), 'night');
+      expect(prefs.getString('mushaf_theme_id'), 'classic');
 
       // Simulate a relaunch: a brand new controller reads the stored value.
       final restored = MushafThemeController();
       await restored.load();
-      expect(restored.theme.id, 'night');
+      expect(restored.theme.id, 'classic');
       expect(restored.isLoaded, isTrue);
     });
 
@@ -96,7 +96,7 @@ void main() {
       await c.load();
       var notified = 0;
       c.addListener(() => notified++);
-      await c.select(MushafTheme.classic);
+      await c.select(MushafTheme.night);
       expect(notified, 0);
     });
   });

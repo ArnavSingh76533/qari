@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -122,19 +120,19 @@ class MushafTheme {
     ornament: Color(0xFFB8860B),
   );
 
-  /// 2. Night / OLED — deep obsidian, crisp warm white, warm amber accent.
+  /// 2. Night / OLED — charcoal paper, white ink and emerald controls.
   static const night = MushafTheme(
     id: 'night',
     label: 'Night / OLED',
     arabicLabel: 'ليلي',
-    background: Color(0xFF121212),
-    text: Color(0xFFE8E6E3),
-    accent: Color(0xFFD4A373),
-    border: Color(0xFF3A342C),
+    background: Color(0xFF181917),
+    text: Color(0xFFF5F5F0),
+    accent: Color(0xFF54DEA2),
+    border: Color(0xFF30332F),
     correctTint: Color(0xFF1B3B2B),
-    activeTint: Color(0xFF3A2E1C),
+    activeTint: Color(0xFF284A2D),
     mismatchInk: Color(0xFFCF6679),
-    ornament: Color(0xFFD4A373),
+    ornament: Color(0xFFBAC9B9),
   );
 
   /// 3. Parchment / Sepia — warm sepia, espresso ink, terracotta accent.
@@ -176,7 +174,7 @@ class MushafTheme {
   ];
 
   static MushafTheme byId(String? id) =>
-      all.firstWhere((t) => t.id == id, orElse: () => classic);
+      all.firstWhere((t) => t.id == id, orElse: () => night);
 }
 
 /// Holds the user's selected Mushaf preset and persists it locally.
@@ -186,7 +184,7 @@ class MushafTheme {
 class MushafThemeController extends ChangeNotifier {
   static const String _prefsKey = 'mushaf_theme_id';
 
-  MushafTheme _theme = MushafTheme.classic;
+  MushafTheme _theme = MushafTheme.night;
   bool _loaded = false;
 
   MushafTheme get theme => _theme;
@@ -198,8 +196,8 @@ class MushafThemeController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _theme = MushafTheme.byId(prefs.getString(_prefsKey));
     } catch (_) {
-      // A storage failure must never block reading — fall back to Classic.
-      _theme = MushafTheme.classic;
+      // A storage failure must never block reading — fall back to Night.
+      _theme = MushafTheme.night;
     }
     _loaded = true;
     notifyListeners();

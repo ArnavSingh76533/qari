@@ -174,8 +174,13 @@ void main() {
         expect(inkOf(tester, words[0]), t.mismatchInk);
         expect(_redWords(tester, t), [words[0]]);
 
-        // The active wash is painted.
-        expect(washes(tester), contains(t.activeTint));
+        // Dark pages use an ink glow; paper presets retain a wash.
+        if (t.isDark) {
+          expect(washOf(tester, words[1]), isNull);
+          expect(spanOf(tester, words[1])!.style!.shadows, isNotEmpty);
+        } else {
+          expect(washes(tester), contains(t.activeTint));
+        }
       });
     }
 

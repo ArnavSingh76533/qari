@@ -81,24 +81,23 @@ void main() {
         reason: 'diacritics were stripped somewhere in the pipeline');
   });
 
-  testWidgets('REQ 1: the page is ONE justified RTL paragraph, not word tiles',
+  testWidgets('words and inline markers belong to a fitted RTL line',
       (tester) async {
     await tester.pumpWidget(prime(
       words: fatiha,
       ayahBoundaries: const [3],
       ayahLabels: const ['1'],
     ));
-    // No per-word widgets, no Wrap, no spacer boxes between words.
     expect(find.byType(Wrap), findsNothing);
+    expect(find.byType(FittedBox), findsOneWidget);
+    expect(find.byType(Spacer), findsNothing);
     final paragraphs = mushafParagraphElements(tester);
-    expect(paragraphs, hasLength(1));
-    final rich = paragraphs.single.widget as RichText;
-    expect(rich.textAlign, TextAlign.justify);
+    expect(paragraphs, hasLength(5));
+    final rich = paragraphs.first.widget as RichText;
+    expect(rich.textAlign, TextAlign.start);
     expect(rich.textDirection, TextDirection.rtl);
     expect(rich.text.style?.fontFamily, 'KFGQPCUthmanicHafs');
-    // Words are separated by the font's own single space, nothing else.
-    expect(
-        rich.text.toPlainText(), '${fatiha.join(' ')} ${ayahMarkerText('1')}');
+    expect(mushafUnitTexts(tester), [...fatiha, ayahMarkerText('1')]);
     expect(rich.text.style?.letterSpacing, 0);
   });
 

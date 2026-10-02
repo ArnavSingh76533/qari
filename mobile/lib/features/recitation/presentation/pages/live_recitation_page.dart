@@ -11,6 +11,7 @@ import '../../../../data/models/recitation_session_record.dart';
 import '../../../../data/models/recitation_stream_event.dart';
 import '../../../../data/models/word_model.dart';
 import '../../../../data/repositories/local_corpus_repository.dart';
+import '../../../../data/repositories/mushaf_layout_repository.dart';
 import '../../../../data/services/audio_service.dart';
 import '../../../../data/services/local_storage_service.dart';
 import '../../../../data/services/recitation_history_service.dart';
@@ -96,11 +97,13 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
 
   /// Whether to colour tajweed rules on the revealed (correct) words, like the
   /// Surah reader. Persisted across sessions.
-  bool _tajweedOn = false;
+  bool _tajweedOn = true;
 
   /// Flat target word array across all ayahs being recited (the whole
   /// page/surah). Used to drive the backend reference + the results grid.
   List<String> _words = const [];
+  List<int> _wordLines = const [];
+  List<int> _markerLines = const [];
 
   /// Tajweed spans, aligned 1:1 with [_words], so each revealed word can be
   /// coloured per-letter by its tajweed rule.
@@ -234,7 +237,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }
 
   Future<void> _loadAppearancePreferences() async {
-    final enabled = await LocalStorageService().getTajweedColorsEnabled();
+    final enabled = await LocalStorageService().getTajweedColorsEnabled(defaultValue: true);
     if (mounted) setState(() => _tajweedOn = enabled);
   }
 
@@ -332,6 +335,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   Future<void> _loadScope() async {
     final generation = ++_loadGeneration;
     try {
+      final printedLayout = await MushafLayoutRepository().load();
       List<AyahModel> allAyahs;
       if (_scope == RecitationScope.page) {
         allAyahs = await _corpus.getAyahsByPage(_page);
@@ -353,10 +357,17 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
       final refs = <(int, int)>[];
       final boundaries = <int>[];
       final labels = <String>[];
+      final wordLines = <int>[];
+      final markerLines = <int>[];
       final meta = <_AyahMeta>[];
       final starts = <int, int>{};
 
       for (final a in ayahs) {
+        final layout = printedLayout[a.reference];
+        if (layout == null) {
+          throw StateError('Missing Mushaf layout: ${a.reference}');
+        }
+        var wordPosition = 0;
         if (a.ayahNumber == 1) starts[words.length] = a.surahNumber;
         for (final w in a.words) {
           // Skip the corpus' trailing numeric verse marker (e.g. "١").
@@ -369,6 +380,9 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           // ayahBoundaries, so dropping it here is also what keeps the ayah
           // ornament from appearing twice.
           if (!_hasArabicLetter(w.text)) continue;
+          final location = layout.words[wordPosition++];
+          wordLines.add(_scope == RecitationScope.page
+              ? location.line : location.row);
           words.add(w.text);
           tajweed.add(
             (w.tajweedSpans != null && w.tajweedSpans!.isNotEmpty)
@@ -380,6 +394,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
         if (a.words.isNotEmpty) {
           boundaries.add(words.length - 1);
           labels.add(a.ayahNumber.toString());
+          markerLines.add(_scope == RecitationScope.page
+              ? layout.marker.line : layout.marker.row);
           meta.add(_AyahMeta(
             surah: a.surahNumber,
             ayah: a.ayahNumber,
@@ -397,6 +413,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           _ayahFrom = _ayah;
           _ayahTo = ayahs.last.ayahNumber;
           _words = words;
+          _wordLines = wordLines;
+          _markerLines = markerLines;
           _wordTajweedSpans = tajweed;
           _ayahRefs = refs;
           _ayahBoundaries = boundaries;
@@ -882,7 +900,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
                                 color: mushaf.text,
                                 height: 1.2,
                               ),
@@ -897,12 +916,14 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: mushaf.text.withValues(alpha: 0.6),
+                          color: mushaf.text.withValues(alpha: 0.65),
+                          fontSize: 10,
                         ),
                       ),
                       Text(_mode.label,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: mushaf.accent,
+                            fontSize: 9,
                             fontWeight: FontWeight.w600,
                           )),
                     ],
@@ -921,7 +942,7 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.palette_outlined),
+            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Mushaf appearance',
             onPressed: () => _showAppearance(mushaf),
           ),
@@ -1016,14 +1037,14 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final paperHeight = math.max(0.0, constraints.maxHeight - 8);
-        final textHeight = math.max(0.0, paperHeight - 34.8);
+        final textHeight = math.max(0.0, paperHeight - (mushaf.isDark ? 8 : 34.8));
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           // Tap anywhere on the page: hide / show the top and bottom chrome.
           onTap: () => setState(() => _chromeVisible = !_chromeVisible),
           child: SingleChildScrollView(
             controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: mushaf.isDark ? 0 : 6, vertical: 4),
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -1032,7 +1053,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 ),
                 child: MushafPageFrame(
                   theme: mushaf,
-                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+                  showBorder: !mushaf.isDark,
+                  padding: EdgeInsets.fromLTRB(8, mushaf.isDark ? 4 : 10, 8, mushaf.isDark ? 4 : 10),
                   child:
                       _loadingPage || _words.isEmpty || _revealedWords.isEmpty
                           ? Padding(
@@ -1054,6 +1076,12 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               tajweedEnabled: _tajweedOn,
                               ayahBoundaries: _ayahBoundaries,
                               ayahLabels: _ayahLabels,
+                              lineNumbers: _wordLines,
+                              ayahLineNumbers: _markerLines,
+                              lineCount: _scope == RecitationScope.page &&
+                                  _page <= 2 ? 8 : 15,
+                              centeredLines: _scope == RecitationScope.page &&
+                                  _page <= 2,
                               minimumHeight: textHeight,
                               blockHeights: {
                                 for (final e in _surahStarts.entries)

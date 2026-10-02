@@ -77,17 +77,18 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
       _pulse.value = 0;
     }
 
+    if (t.id == MushafTheme.night.id) return _nightControls(t);
     return Container(
       margin: const EdgeInsets.fromLTRB(6, 4, 6, 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         // Semi-transparent so the paper shows through — glassy, not a card.
         color: Color.alphaBlend(
-          t.text.withValues(alpha: t.isDark ? 0.30 : 0.10),
+          t.text.withValues(alpha: t.isDark ? 0.07 : 0.10),
           t.background,
         ).withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: t.border.withValues(alpha: 0.7), width: 1),
+        border: Border.all(color: t.border.withValues(alpha: 0.7)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: t.isDark ? 0.45 : 0.12),
@@ -171,6 +172,61 @@ class _FloatingRecitationBarState extends State<FloatingRecitationBar>
       ),
     );
   }
+
+  Widget _nightControls(MushafTheme t) => Container(
+        margin: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF222522),
+          border: Border(top: BorderSide(color: t.border)),
+        ),
+        child: Row(children: [
+          _CircleAction(
+              theme: t,
+              icon: Icons.menu_book_rounded,
+              tooltip: 'Jump to ayah / page',
+              onTap: widget.onJumpTap),
+          if (widget.pageLabel != null) ...[
+            const SizedBox(width: 8),
+            Expanded(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(widget.pageLabel!,
+                  style: TextStyle(
+                      color: t.text.withValues(alpha: .65), fontSize: 10)),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    tooltip: 'Previous Quran page',
+                    color: t.text,
+                    onPressed: widget.onPreviousPage),
+                IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    tooltip: 'Next Quran page',
+                    color: t.text,
+                    onPressed: widget.onNextPage),
+              ]),
+            ])),
+          ] else
+            const Expanded(child: SizedBox()),
+          if (widget.mode != null && widget.onModeToggle != null)
+            _ModeToggle(
+                theme: t, mode: widget.mode!, onTap: widget.onModeToggle!),
+          if (widget.onStop != null)
+            _CircleAction(
+                theme: t,
+                icon: Icons.stop_rounded,
+                tooltip: widget.stopLabel,
+                emphasise: true,
+                onTap: widget.onStop!),
+          const SizedBox(width: 12),
+          _MicButton(
+              theme: t,
+              listening: widget.listening,
+              pulse: _pulse,
+              label: widget.micLabel,
+              onTap: widget.onMicTap),
+        ]),
+      );
 }
 
 class _MicButton extends StatelessWidget {
@@ -204,6 +260,7 @@ class _MicButton extends StatelessWidget {
             builder: (context, child) {
               final p = listening ? pulse.value : 0.0;
               return Stack(
+                clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
                   // Expanding halo — the "waveform" indicator.
@@ -229,20 +286,27 @@ class _MicButton extends StatelessWidget {
               height: 50,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: listening ? t.accent : t.accent.withValues(alpha: 0.16),
+                color: t.isDark
+                    ? null
+                    : (listening ? t.accent : t.accent.withValues(alpha: 0.16)),
+                gradient: t.isDark
+                    ? const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF51E4C3), Color(0xFF7DD857)],
+                      )
+                    : null,
                 border: Border.all(color: t.accent, width: 1.6),
                 boxShadow: [
                   BoxShadow(
-                    color: t.accent.withValues(alpha: 0.28),
-                    blurRadius: 12,
+                    color: t.accent.withValues(alpha: t.isDark ? 0.55 : 0.28),
+                    blurRadius: t.isDark ? 22 : 12,
                   ),
                 ],
               ),
               child: Icon(
                 listening ? Icons.graphic_eq_rounded : Icons.mic_rounded,
-                color: listening
-                    ? (t.isDark ? const Color(0xFF1A1409) : Colors.white)
-                    : t.accent,
+                color: t.isDark || listening ? Colors.white : t.accent,
                 size: 24,
               ),
             ),

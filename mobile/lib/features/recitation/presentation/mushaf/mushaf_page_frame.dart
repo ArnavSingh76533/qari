@@ -70,14 +70,16 @@ class MushafPageFrame extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: theme.border, width: 1.6),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(theme.isDark ? 0 : 6),
       ),
       // A second, inset hairline — the classic double-rule page frame.
       child: Container(
         margin: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           border: Border.all(
-            color: theme.border.withValues(alpha: 0.55),
+            color: theme.isDark
+                ? Colors.transparent
+                : theme.border.withValues(alpha: 0.55),
             width: 0.8,
           ),
           borderRadius: BorderRadius.circular(3),

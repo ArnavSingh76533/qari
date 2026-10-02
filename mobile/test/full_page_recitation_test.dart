@@ -55,9 +55,15 @@ void main() {
     }
   });
 
-  setUp(() => SharedPreferences.setMockInitialValues({
+  setUp(() {
+    SharedPreferences.setMockInitialValues({
         'mushaf_recitation_mode': 'tilawat',
-      }));
+        if (const String.fromEnvironment('MUSHAF_CAPTURE_THEME') == 'night') ...{
+          'mushaf_theme_id': 'night',
+          'tajweed_colors_enabled': true,
+        },
+      });
+  });
 
   testWidgets('AI recitation always opens in Hifz despite the saved mode',
       (tester) async {
@@ -115,14 +121,22 @@ void main() {
       if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
         final boundary =
             preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
-        await tester.runAsync(() async {
+        final shadows = debugDisableShadows;
+        try {
+          debugDisableShadows = false;
+          boundary.markNeedsPaint();
+          await tester.pump();
+          await tester.runAsync(() async {
           final image = await boundary.toImage(pixelRatio: 2);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
           final file = File('build/review/quran-${size.width.toInt()}.png');
           await file.parent.create(recursive: true);
           await file.writeAsBytes(bytes!.buffer.asUint8List());
           image.dispose();
-        });
+          });
+        } finally {
+          debugDisableShadows = shadows;
+        }
       }
       final page = tester.getRect(find.byType(MushafPageFrame));
       final bar = tester.getRect(find.byType(FloatingRecitationBar));
@@ -162,6 +176,12 @@ void main() {
   });
 
   for (final target in [
+    (1, 1, 1, '٧'),
+    (2, 2, 1, '٥'),
+    (3, 2, 6, '١٦'),
+    (4, 2, 17, '٢٤'),
+    (5, 2, 25, '٢٩'),
+    (6, 2, 30, '٣٧'),
     (48, 2, 282, '٢٨٢'),
     (501, 45, 23, '٣٢'),
     (576, 74, 19, '٤٧'),
@@ -190,14 +210,22 @@ void main() {
       if (const bool.fromEnvironment('CAPTURE_QURAN_UI')) {
         final boundary =
             preview.currentContext!.findRenderObject() as RenderRepaintBoundary;
-        await tester.runAsync(() async {
+        final shadows = debugDisableShadows;
+        try {
+          debugDisableShadows = false;
+          boundary.markNeedsPaint();
+          await tester.pump();
+          await tester.runAsync(() async {
           final image = await boundary.toImage(pixelRatio: 2);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
           final file = File('build/review/quran-page-${target.$1}.png');
           await file.parent.create(recursive: true);
           await file.writeAsBytes(bytes!.buffer.asUint8List());
           image.dispose();
-        });
+          });
+        } finally {
+          debugDisableShadows = shadows;
+        }
       }
       expect(find.textContaining('Page ${target.$1} |'), findsOneWidget);
       final page = tester.getRect(find.byType(MushafPageFrame));
