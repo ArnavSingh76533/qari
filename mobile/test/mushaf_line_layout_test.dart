@@ -20,7 +20,8 @@ void main() {
 
   setUpAll(() async {
     await (FontLoader('KFGQPCUthmanicHafs')
-          ..addFont(rootBundle.load('assets/fonts/KFGQPCUthmanicHafs-Regular.otf')))
+          ..addFont(
+              rootBundle.load('assets/fonts/KFGQPCUthmanicHafs-Regular.otf')))
         .load();
     final layout = await MushafLayoutRepository().load();
     final ayahs = await LocalCorpusRepository().getAyahsByPage(3);
@@ -38,7 +39,8 @@ void main() {
     }
   });
 
-  Widget page({int cursor = -1, bool hidden = false, GlobalKey? anchor}) => MaterialApp(
+  Widget page({int cursor = -1, bool hidden = false, GlobalKey? anchor}) =>
+      MaterialApp(
         home: Scaffold(
           body: SizedBox(
             height: 560,
@@ -60,7 +62,8 @@ void main() {
       );
 
   for (final width in [320.0, 360.0, 430.0]) {
-    testWidgets('printed 15 lines remain flush at width $width', (tester) async {
+    testWidgets('printed 15 lines remain flush at width $width',
+        (tester) async {
       tester.view.physicalSize = Size(width, 740);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -73,8 +76,10 @@ void main() {
       final paragraphs = mushafParagraphElements(tester);
       for (var line = 1; line <= 15; line++) {
         final rowFinder = find.byKey(ValueKey('mushaf-line-$line'));
-        final elements = find.descendant(of: rowFinder,
-            matching: find.byType(RichText)).evaluate().toList();
+        final elements = find
+            .descendant(of: rowFinder, matching: find.byType(RichText))
+            .evaluate()
+            .toList();
         final first = (elements.first.widget as RichText).text.toPlainText();
         final last = (elements.last.widget as RichText).text.toPlainText();
         final boxes = [rectOf(tester, first), rectOf(tester, last, last: true)];
@@ -93,35 +98,34 @@ void main() {
     });
   }
 
-  testWidgets('fitting scales natural gaps with the complete row', (tester) async {
+  testWidgets('adjacent word advances have no inserted layout gap',
+      (tester) async {
     tester.view.physicalSize = const Size(360, 740);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(page());
-    final units = find.descendant(of: find.byKey(const ValueKey('mushaf-line-1')),
-        matching: find.byType(RichText)).evaluate().toList();
+    final units = find
+        .descendant(
+            of: find.byKey(const ValueKey('mushaf-line-1')),
+            matching: find.byType(RichText))
+        .evaluate()
+        .toList();
     final first = units[0].renderObject! as RenderBox;
     final second = units[1].renderObject! as RenderBox;
-    final naturalGap = TextPainter(
-      text: TextSpan(text: String.fromCharCode(0x20),
-          style: (units[0].widget as RichText).text.style),
-      textDirection: TextDirection.rtl,
-    )..layout();
-    final scale = (first.localToGlobal(Offset(first.size.width, 0)).dx -
-            first.localToGlobal(Offset.zero).dx) / first.size.width;
     final gap = first.localToGlobal(Offset.zero).dx -
         second.localToGlobal(Offset(second.size.width, 0)).dx;
-    expect(gap, closeTo(naturalGap.width * scale, 0.1));
-    naturalGap.dispose();
+    expect(gap, closeTo(0, 0.1));
   });
 
-  testWidgets('scaled cursor and Hifz keep the same word geometry', (tester) async {
+  testWidgets('scaled cursor and Hifz keep the same word geometry',
+      (tester) async {
     final anchor = GlobalKey();
     await tester.pumpWidget(page(cursor: 17, anchor: anchor));
     final before = [for (final word in words.toSet()) rectOf(tester, word)];
     final active = rectOf(tester, words[17]);
     final box = anchor.currentContext!.findRenderObject()! as RenderBox;
-    expect((box.localToGlobal(Offset.zero) - active.topRight).distance, lessThan(0.5));
+    expect((box.localToGlobal(Offset.zero) - active.topRight).distance,
+        lessThan(0.5));
     await tester.pumpWidget(page(cursor: 17, hidden: true, anchor: anchor));
     expect([for (final word in words.toSet()) rectOf(tester, word)], before);
     expect(inkOf(tester, words.last)?.a, 0);
@@ -129,7 +133,9 @@ void main() {
   });
 
   testWidgets('verse marker may occupy the next printed row', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: MushafRevealView(
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+            body: MushafRevealView(
       words: ['ٱلْحَمْدُ', 'لِلَّهِ'],
       statuses: [LiveWordStatus.pending, LiveWordStatus.pending],
       lineNumbers: [1, 2],
@@ -147,8 +153,11 @@ void main() {
     expect(countOf(tester, '٢'), 1);
   });
 
-  testWidgets('a surah range remains readable across several printed pages', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+  testWidgets('a surah range remains readable across several printed pages',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
       child: MushafRevealView(
         words: List.generate(45, (_) => 'ٱلْحَمْدُ'),
         statuses: List.filled(45, LiveWordStatus.pending),
@@ -157,7 +166,8 @@ void main() {
         mushaf: MushafTheme.classic,
       ),
     ))));
-    expect(tester.getSize(find.byType(MushafRevealView)).height, closeTo(1680, 0.1));
+    expect(tester.getSize(find.byType(MushafRevealView)).height,
+        closeTo(1680, 0.1));
     expect(tester.getSize(find.byKey(const ValueKey('mushaf-line-16'))).height,
         closeTo(560 / 15, 0.01));
     expect(tester.takeException(), isNull);

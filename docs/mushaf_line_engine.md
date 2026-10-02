@@ -3,8 +3,8 @@
 `MushafRevealView` now renders a Column of independent RTL lines. Each line
 contains a natural-width word row inside a FittedBox. The fitted transform
 maps the whole row to the available width and the printed row pitch. Word
-gaps come from the bundled Hafs font's space advance; no text separators are
-inserted between widgets and no available width is distributed into gaps.
+separation comes only from the Hafs glyph side bearings. No spacer widgets or
+text separators are inserted, and no available width is distributed into gaps.
 Tajweed spans, Hifz visibility, live verdicts, mistake taps and cursor anchors
 use the same geometry before and after a state update.
 
@@ -33,8 +33,8 @@ flutter test test/mushaf_in_place_test.dart test/mushaf_scroll_anchor_test.dart 
 ```
 
 The full-page suite checks all 604 pages against the viewport and controls.
-The line suite checks 320/360/430-pixel widths, flush row boundaries, natural
-gap scaling, text/marker order, Hifz geometry, scaled cursor anchors and
+The line suite checks 320/360/430-pixel widths, flush row boundaries, zero added
+inter-word layout gaps, text/marker order, Hifz geometry, scaled cursor anchors and
 multiple-sheet ranges. For screenshots using real bundled fonts:
 
 ```sh

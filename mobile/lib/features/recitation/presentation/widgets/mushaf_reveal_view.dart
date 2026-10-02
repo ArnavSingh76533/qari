@@ -12,8 +12,8 @@ import '../word_view_state.dart';
 
 /// A Madinah page rendered as independently fitted RTL lines.
 /// Printed line metadata is independent of viewport size and live verdicts.
-/// Each line scales its entire natural word row; gaps are font advances and
-/// are never distributed across the available page width.
+/// Each line scales its entire natural word row; separation comes only from
+/// glyph side bearings, with no added gap widgets.
 class MushafRevealView extends StatefulWidget {
   /// Complete immutable page words, in recitation order.
   final List<String> words;
@@ -205,11 +205,6 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     return width;
   }
 
-  /// Font metrics supply the natural word separation. No text separators or
-  /// flexible layout gaps are inserted into the word row.
-  double _wordGap(TextStyle style) =>
-      _advance(String.fromCharCode(0x20), style);
-
   Map<int, List<_LineUnit>> _pageLines(double width, TextStyle style) {
     final w = widget;
     final canonical = w.lineNumbers.length == w.words.length &&
@@ -223,7 +218,6 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     };
     var row = 1;
     var occupied = 0.0;
-    final gap = _wordGap(style);
     for (var i = 0; i < w.words.length; i++) {
       final markerIndex = markers[i];
       if (canonical) {
@@ -236,16 +230,15 @@ class _MushafRevealViewState extends State<MushafRevealView> {
         final advance = _advance(mushafDisplayText(w.words[i]), style) +
             (markerIndex == null
                 ? 0
-                : gap +
-                    _advance(
-                      ayahMarkerText(w.ayahLabels[markerIndex]),
-                      style,
-                    ));
-        if (occupied > 0 && occupied + gap + advance > width) {
+                : _advance(
+                    ayahMarkerText(w.ayahLabels[markerIndex]),
+                    style,
+                  ));
+        if (occupied > 0 && occupied + advance > width) {
           row++;
           occupied = 0;
         }
-        occupied += (occupied > 0 ? gap : 0) + advance;
+        occupied += advance;
       }
       rows.putIfAbsent(row, () => []).add(_LineUnit.word(i));
       if (markerIndex != null) {
@@ -387,15 +380,10 @@ class _MushafRevealViewState extends State<MushafRevealView> {
       return SizedBox(key: ValueKey('mushaf-line-$row'), height: pitch);
     }
     final w = widget;
-    final gap = _wordGap(style);
     final children = <Widget>[];
     var naturalWidth = 0.0;
     for (var n = 0; n < units.length; n++) {
       final unit = units[n];
-      if (n > 0) {
-        children.add(SizedBox(width: gap));
-        naturalWidth += gap;
-      }
       final text = _unitText(unit);
       final advance = _advance(text, style);
       naturalWidth += advance;
