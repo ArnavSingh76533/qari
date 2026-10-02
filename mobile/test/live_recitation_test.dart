@@ -109,7 +109,7 @@ void main() {
       find.descendant(of: bar, matching: find.byIcon(Icons.menu_book_rounded)),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.palette_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
   });
 
   testWidgets('MushafRevealView colours tajweed letters when enabled',
@@ -190,12 +190,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // All revealed words appear as ONE continuous justified Arabic paragraph.
+    // Separate word units retain reading order inside fitted lines.
     expect(mushafUnitTexts(tester),
         ['بسم', 'الله', ayahMarkerText('2'), 'الرحمن']);
-    final paragraph = mushafParagraphElements(tester).single.widget as RichText;
-    expect(paragraph.text.toPlainText(), 'بسم الله ٢ الرحمن');
-    expect(paragraph.textAlign, TextAlign.justify);
+    expect(mushafParagraphElements(tester), hasLength(4));
+    expect(find.byType(FittedBox), findsWidgets);
 
     // Inline end-of-ayah medallion (the Arabic-Indic verse number, which the
     // Hafs font draws as the ornament) sits between the ayahs.

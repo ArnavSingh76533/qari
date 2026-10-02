@@ -121,13 +121,13 @@ void main() {
       textDirection: TextDirection.rtl,
     )..layout();
     final scale = first.getTransformTo(null).entry(0, 0);
-    expect(gap, closeTo(painter.width * .30 * scale, .1));
+    expect(gap, closeTo(painter.width * .40 * scale, .1));
     expect(gap, greaterThan(.5));
     expect(gap, lessThan(3));
     painter.dispose();
   });
 
-  testWidgets('Arabic ink is 15 percent larger within unchanged line pitch',
+  testWidgets('enlarged Arabic ink reserves clearance within the line pitch',
       (tester) async {
     tester.view.physicalSize = const Size(360, 740);
     tester.view.devicePixelRatio = 1;
@@ -137,8 +137,32 @@ void main() {
         mushafParagraphElements(tester).first.renderObject! as RenderBox;
     final transform = first.getTransformTo(null);
     const oldScale = (560 / 15) / (32 * 1.55);
-    expect(transform.entry(1, 1), closeTo(oldScale * 1.15, 0.00001));
+    expect(transform.entry(1, 1),
+        closeTo(oldScale * 1.15 * MushafRevealView.lineInkFraction, 0.00001));
     expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
+  });
+
+  testWidgets('all 15 rows have vertical clearance and faint night rules',
+      (tester) async {
+    await tester.pumpWidget(page());
+    for (var row = 1; row <= 15; row++) {
+      final rowFinder = find.byKey(ValueKey('mushaf-line-$row'));
+      final bounds = tester.getRect(rowFinder);
+      final ink =
+          tester.getRect(find.byKey(ValueKey('mushaf-line-content-$row')));
+      expect(ink.top - bounds.top, greaterThan(1.5));
+      expect(bounds.bottom - ink.bottom, greaterThan(1.5));
+      final decoration = tester
+          .widget<DecoratedBox>(find
+              .descendant(of: rowFinder, matching: find.byType(DecoratedBox))
+              .first)
+          .decoration as BoxDecoration;
+      final border = decoration.border! as Border;
+      expect(border.bottom.width, .5);
+      expect(border.bottom.color.a, closeTo(.07, .005));
+    }
+    expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('opening lines share a scale and regular-page glyph height',
@@ -164,8 +188,13 @@ void main() {
         (paragraphs.last.renderObject! as RenderBox).getTransformTo(null);
     expect(first.entry(0, 0), closeTo(last.entry(0, 0), 0.00001));
     expect(first.entry(1, 1), closeTo(last.entry(1, 1), 0.00001));
-    expect(first.entry(1, 1),
-        closeTo((560 / 15) / (32 * MushafRevealView.baseLineHeight), 0.00001));
+    expect(
+        first.entry(1, 1),
+        closeTo(
+            (560 / 15) *
+                MushafRevealView.lineInkFraction /
+                (32 * MushafRevealView.baseLineHeight),
+            0.00001));
     expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
   });
 

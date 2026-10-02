@@ -3,11 +3,12 @@
 `MushafRevealView` now renders a Column of independent RTL lines. Each line
 contains a natural-width word row inside a FittedBox. The fitted transform
 maps the whole row to the available width and the printed row pitch. Word
-separation uses glyph side bearings plus 30% of the Hafs font's natural space
+separation uses glyph side bearings plus 40% of the Hafs font's natural space
 advance. This small fixed gap preserves readability; no text separators or
 flexible spacers are inserted, and no available width is distributed into gaps.
-Visible Arabic ink is enlarged by 15% within the fixed row pitch by reducing
-the natural line leading from 1.55 to 1.55 / 1.15. Horizontal fitting retains
+The base Arabic ink scale is enlarged by 15% by reducing natural line leading
+from 1.55 to 1.55 / 1.15. Each row reserves 5% of its pitch above and below the
+fitted text, giving neighbouring lines breathing room. Horizontal fitting retains
 the printed margins and text order. Opening rows share a single horizontal
 transform and use the same glyph height as ordinary pages, preserving their
 centered text without enlarging short lines independently.
@@ -57,3 +58,11 @@ flutter test test/full_page_recitation_test.dart --plain-name 'complete page 6 f
 Screenshots are written to `mobile/build/review/`. Native Android builds use
 the existing production entry point; `main_ui_preview.dart` is a separate
 login-free entry point for inspecting the renderer and navigation locally.
+
+The 40% gap and line-clearance update passes the full 159-test Flutter suite, including all 604
+pages, UI navigation, Hifz, word mapping, PCM framing and result displays.
+Local AI validation passes 72 recitation API tests and 164 ML tests. These use
+isolated storage and controlled recognition fixtures; they do not establish
+real microphone recognition accuracy. HTTPS health and live WebSocket probes
+to the configured production backend timed out during verification on
+2026-10-02, so a signed-in microphone-to-server session remains unverified.

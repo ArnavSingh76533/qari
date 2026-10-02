@@ -123,10 +123,13 @@ class MushafRevealView extends StatefulWidget {
     this.blockHeights = const {},
   });
 
-  /// Increase visible Arabic ink by 15% within the fixed printed row pitch.
+  /// Base ink enlargement before reserving inter-line breathing room.
   /// Changing fontSize alone is cancelled by the fitted line transform.
   static const double glyphScale = 1.15;
   static const double baseLineHeight = 1.55 / glyphScale;
+
+  /// Five percent above and below the fitted text keeps adjacent lines apart.
+  static const double lineInkFraction = .90;
 
   @override
   State<MushafRevealView> createState() => _MushafRevealViewState();
@@ -212,7 +215,7 @@ class _MushafRevealViewState extends State<MushafRevealView> {
   // the large holes produced by paragraph justification. The complete row,
   // including this fixed advance, is transformed by the same FittedBox.
   double _wordGap(TextStyle style) =>
-      _advance(String.fromCharCode(0x20), style) * 0.30;
+      _advance(String.fromCharCode(0x20), style) * 0.40;
 
   Map<int, List<_LineUnit>> _pageLines(double width, TextStyle style) {
     final w = widget;
@@ -454,7 +457,8 @@ class _MushafRevealViewState extends State<MushafRevealView> {
       children.add(SizedBox(width: advance, child: word));
     }
     // BoxFit.fill makes the complete row flush horizontally, while its
-    // natural height maps to the fixed line pitch. No word can wrap or detach
+    // natural height maps inside the fixed line pitch with vertical clearance.
+    // No word can wrap or detach
     // its harakat. FittedBox also transforms hit testing and cursor anchors.
     return SizedBox(
       key: ValueKey('mushaf-line-$row'),
@@ -465,7 +469,9 @@ class _MushafRevealViewState extends State<MushafRevealView> {
           width: width,
           // Opening pages keep their eight slots, but their ink has the same
           // height as ordinary pages. Every opening row shares one transform.
-          height: w.centeredLines ? pitch * w.lineCount / 15 : pitch,
+          key: ValueKey('mushaf-line-content-$row'),
+          height: (w.centeredLines ? pitch * w.lineCount / 15 : pitch) *
+              MushafRevealView.lineInkFraction,
           child: FittedBox(
             fit: BoxFit.fill,
             child: SizedBox(
@@ -491,18 +497,18 @@ class _MushafRevealViewState extends State<MushafRevealView> {
   Widget _lineRule(Widget child) => DecoratedBox(
         decoration: BoxDecoration(
           color: widget.mushaf.isDark
-              ? Colors.black.withValues(alpha: .025)
+              ? Colors.black.withValues(alpha: .045)
               : null,
           border: Border(
             top: BorderSide(
               color: widget.mushaf.isDark
-                  ? Colors.black.withValues(alpha: .30)
+                  ? Colors.black.withValues(alpha: .45)
                   : Colors.transparent,
               width: .5,
             ),
             bottom: BorderSide(
               color: widget.mushaf.isDark
-                  ? widget.mushaf.text.withValues(alpha: .04)
+                  ? widget.mushaf.text.withValues(alpha: .07)
                   : Colors.transparent,
               width: .5,
             ),
