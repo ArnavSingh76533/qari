@@ -38,24 +38,9 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Tests
         working-directory: mobile
-        # Some legacy tests are network/timer bound; run the stable suites.
-        run: |
-          flutter test --dart-define=CAPTURE_QURAN_UI=true \
-            test/ayah_widget_visibility_test.dart \
-            test/recitation_screen_test.dart \
-            test/recitation_word_mapping_test.dart \
-            test/live_recitation_test.dart \
-            test/full_page_recitation_test.dart \
-            test/recitation_evidence_test.dart \
-            test/mushaf_modes_test.dart \
-            test/mushaf_in_place_test.dart \
-            test/mushaf_scroll_anchor_test.dart \
-            test/mushaf_theme_test.dart \
-            test/mushaf_jump_sheet_test.dart \
-            test/mushaf_results_test.dart \
-            test/word_view_state_test.dart \
-            test/audio_frame_contract_test.dart \
-            test/corpus_tashkeel_test.dart
+        # Offline reader and lesson harnesses are repaired; exercise every
+        # suite, including canonical line spacing and formerly excluded tests.
+        run: flutter test --dart-define=CAPTURE_QURAN_UI=true
       - name: Quran UI previews
         if: always()
         uses: actions/upload-artifact@v4

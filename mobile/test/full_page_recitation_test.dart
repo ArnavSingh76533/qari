@@ -57,12 +57,12 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({
-        'mushaf_recitation_mode': 'tilawat',
-        if (const String.fromEnvironment('MUSHAF_CAPTURE_THEME') == 'night') ...{
-          'mushaf_theme_id': 'night',
-          'tajweed_colors_enabled': true,
-        },
-      });
+      'mushaf_recitation_mode': 'tilawat',
+      if (const String.fromEnvironment('MUSHAF_CAPTURE_THEME') == 'night') ...{
+        'mushaf_theme_id': 'night',
+        'tajweed_colors_enabled': true,
+      },
+    });
   });
 
   testWidgets('AI recitation always opens in Hifz despite the saved mode',
@@ -127,12 +127,13 @@ void main() {
           boundary.markNeedsPaint();
           await tester.pump();
           await tester.runAsync(() async {
-          final image = await boundary.toImage(pixelRatio: 2);
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          final file = File('build/review/quran-${size.width.toInt()}.png');
-          await file.parent.create(recursive: true);
-          await file.writeAsBytes(bytes!.buffer.asUint8List());
-          image.dispose();
+            final image = await boundary.toImage(pixelRatio: 2);
+            final bytes =
+                await image.toByteData(format: ui.ImageByteFormat.png);
+            final file = File('build/review/quran-${size.width.toInt()}.png');
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes!.buffer.asUint8List());
+            image.dispose();
           });
         } finally {
           debugDisableShadows = shadows;
@@ -216,12 +217,13 @@ void main() {
           boundary.markNeedsPaint();
           await tester.pump();
           await tester.runAsync(() async {
-          final image = await boundary.toImage(pixelRatio: 2);
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          final file = File('build/review/quran-page-${target.$1}.png');
-          await file.parent.create(recursive: true);
-          await file.writeAsBytes(bytes!.buffer.asUint8List());
-          image.dispose();
+            final image = await boundary.toImage(pixelRatio: 2);
+            final bytes =
+                await image.toByteData(format: ui.ImageByteFormat.png);
+            final file = File('build/review/quran-page-${target.$1}.png');
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes!.buffer.asUint8List());
+            image.dispose();
           });
         } finally {
           debugDisableShadows = shadows;

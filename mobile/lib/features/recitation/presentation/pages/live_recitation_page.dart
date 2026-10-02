@@ -237,7 +237,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
   }
 
   Future<void> _loadAppearancePreferences() async {
-    final enabled = await LocalStorageService().getTajweedColorsEnabled(defaultValue: true);
+    final enabled =
+        await LocalStorageService().getTajweedColorsEnabled(defaultValue: true);
     if (mounted) setState(() => _tajweedOn = enabled);
   }
 
@@ -381,8 +382,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           // ornament from appearing twice.
           if (!_hasArabicLetter(w.text)) continue;
           final location = layout.words[wordPosition++];
-          wordLines.add(_scope == RecitationScope.page
-              ? location.line : location.row);
+          wordLines.add(
+              _scope == RecitationScope.page ? location.line : location.row);
           words.add(w.text);
           tajweed.add(
             (w.tajweedSpans != null && w.tajweedSpans!.isNotEmpty)
@@ -395,7 +396,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
           boundaries.add(words.length - 1);
           labels.add(a.ayahNumber.toString());
           markerLines.add(_scope == RecitationScope.page
-              ? layout.marker.line : layout.marker.row);
+              ? layout.marker.line
+              : layout.marker.row);
           meta.add(_AyahMeta(
             surah: a.surahNumber,
             ayah: a.ayahNumber,
@@ -1037,14 +1039,16 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final paperHeight = math.max(0.0, constraints.maxHeight - 8);
-        final textHeight = math.max(0.0, paperHeight - (mushaf.isDark ? 8 : 34.8));
+        final textHeight =
+            math.max(0.0, paperHeight - (mushaf.isDark ? 8 : 34.8));
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           // Tap anywhere on the page: hide / show the top and bottom chrome.
           onTap: () => setState(() => _chromeVisible = !_chromeVisible),
           child: SingleChildScrollView(
             controller: _scrollController,
-            padding: EdgeInsets.symmetric(horizontal: mushaf.isDark ? 0 : 6, vertical: 4),
+            padding: EdgeInsets.symmetric(
+                horizontal: mushaf.isDark ? 0 : 6, vertical: 4),
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -1054,7 +1058,8 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                 child: MushafPageFrame(
                   theme: mushaf,
                   showBorder: !mushaf.isDark,
-                  padding: EdgeInsets.fromLTRB(8, mushaf.isDark ? 4 : 10, 8, mushaf.isDark ? 4 : 10),
+                  padding: EdgeInsets.fromLTRB(
+                      8, mushaf.isDark ? 4 : 10, 8, mushaf.isDark ? 4 : 10),
                   child:
                       _loadingPage || _words.isEmpty || _revealedWords.isEmpty
                           ? Padding(
@@ -1078,10 +1083,12 @@ class _LiveRecitationPageState extends State<LiveRecitationPage> {
                               ayahLabels: _ayahLabels,
                               lineNumbers: _wordLines,
                               ayahLineNumbers: _markerLines,
-                              lineCount: _scope == RecitationScope.page &&
-                                  _page <= 2 ? 8 : 15,
-                              centeredLines: _scope == RecitationScope.page &&
-                                  _page <= 2,
+                              lineCount:
+                                  _scope == RecitationScope.page && _page <= 2
+                                      ? 8
+                                      : 15,
+                              centeredLines:
+                                  _scope == RecitationScope.page && _page <= 2,
                               minimumHeight: textHeight,
                               blockHeights: {
                                 for (final e in _surahStarts.entries)

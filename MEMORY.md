@@ -4,6 +4,56 @@
 > Read this file first at the start of every session. Update it whenever
 > meaningful work is done. Keep it concise.
 
+## Session 2026-10-02 — Madinah fitted lines, readable spacing and CI
+
+Current state: PR [#14](https://github.com/khan23153/qari/pull/14) merged into
+`main` at `ad00f63` (2026-10-02). Rendering changes are in `ae99a2c` and the
+earlier commits included by that PR. Older session notes below are historical;
+this entry supersedes their renderer details and legacy test-failure counts.
+
+- Canonical Quran.com word/verse-marker page and line locations are bundled in
+  `mobile/assets/mushaf_layout.json.gz`, loaded by `MushafLayoutRepository`.
+  The builder verified all 6,236 ayah references, word counts and Arabic letter
+  order against the existing corpus; Quran text and backend indices are unchanged.
+- `MushafRevealView`: a stretched Column of independent RTL word rows, each
+  fitted as a whole line. Ordinary pages keep 15 slots; opening pages 1/2 use
+  eight centered slots with one shared horizontal scale and ordinary-page ink
+  height. Long surah ranges remain scrollable. No paragraph justification,
+  flexible word gaps or manually inserted string separators in this renderer.
+- Latest user preference: **40% of the Hafs font's measured natural space
+  advance between word units**, replacing the earlier 30%. Each row reserves
+  5% above and below its fitted text for line clearance. Base ink enlargement
+  is 1.15 before that clearance; do not describe the final ink as 15% larger
+  than the former full-pitch rendering.
+- Night reader defaults to charcoal, vivid Tajweed and white verse markers,
+  with faint horizontal row rules and no enclosing page frame. Green gradient
+  mic sits at the right with a halo. Saved theme/Tajweed choices are respected.
+  Hifz visibility, red-wall guard, mistake taps and scaled cursor anchors remain.
+- UI-only preview: `mobile/lib/main_ui_preview.dart`, login-free, voice feedback
+  disabled. The normal `main.dart` entry point retains authentication and voice.
+  Both Android APKs build. Latest preview installed/launched in BlueStacks;
+  native page 1 and real-font screenshots of pages 1-5 were visually inspected.
+  Local release APK uses the repository's development signing fallback; no
+  production keystore, OTA publication or version bump was supplied/performed.
+- Validation: **159 Flutter tests, 72 recitation API tests, 164 ML tests pass**.
+  Full-page sweep covers all 604 pages. Renderer/theme/layout analysis is clean;
+  broader app analysis has no errors but retains warning/info lint findings.
+  Old grammar/language assertions, paragraph/icon expectations and offline
+  reader/pushed-lesson test harnesses were repaired.
+- AI tests use isolated storage and controlled recognition fixtures. Production
+  HTTPS health and live WebSocket connection probes timed out from this desktop
+  on 2026-10-02. Signed-in microphone-to-server recognition and deployed model
+  accuracy remain unverified in this session; backend/model code was not changed.
+- Post-merge Flutter CI failed at **Check Dart formatting**, before analysis or
+  tests: `live_recitation_page.dart` and `full_page_recitation_test.dart` needed
+  formatting. Follow-up formats both and runs the full Flutter suite in CI,
+  including canonical line tests and formerly excluded tests. Check the new
+  GitHub run for Linux CI status; local success does not prove remote success.
+- APK workflow already exists: `.github/workflows/build-apk.yml`. For a review
+  artifact, select the current branch and disable `bump` and `commit_release`.
+  Download the successful run's APK artifact. Keep publication/version changes
+  separate from a review build.
+
 ## Session 2026-09-28b — Mushaf v4: Tilawat tab (Qibla removed), Tilawat/Hifz modes ✅
 
 Test build `qari-mushaf-v4.apk` (1.0.49+71, not OTA) at
