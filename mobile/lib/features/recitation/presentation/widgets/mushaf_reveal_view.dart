@@ -13,7 +13,7 @@ import '../word_view_state.dart';
 /// A Madinah page rendered as independently fitted RTL lines.
 /// Printed line metadata is independent of viewport size and live verdicts.
 /// Each line scales its entire natural word row; separation comes only from
-/// glyph side bearings, with no added gap widgets.
+/// glyph side bearings plus a small font-derived inter-word gap.
 class MushafRevealView extends StatefulWidget {
   /// Complete immutable page words, in recitation order.
   final List<String> words;
@@ -208,6 +208,12 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     return width;
   }
 
+  // A fraction of the font's natural space separates words without leaving
+  // the large holes produced by paragraph justification. The complete row,
+  // including this fixed advance, is transformed by the same FittedBox.
+  double _wordGap(TextStyle style) =>
+      _advance(String.fromCharCode(0x20), style) * 0.30;
+
   Map<int, List<_LineUnit>> _pageLines(double width, TextStyle style) {
     final w = widget;
     final canonical = w.lineNumbers.length == w.words.length &&
@@ -221,6 +227,7 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     };
     var row = 1;
     var occupied = 0.0;
+    final gap = _wordGap(style);
     for (var i = 0; i < w.words.length; i++) {
       final markerIndex = markers[i];
       if (canonical) {
@@ -233,15 +240,16 @@ class _MushafRevealViewState extends State<MushafRevealView> {
         final advance = _advance(mushafDisplayText(w.words[i]), style) +
             (markerIndex == null
                 ? 0
-                : _advance(
-                    ayahMarkerText(w.ayahLabels[markerIndex]),
-                    style,
-                  ));
-        if (occupied > 0 && occupied + advance > width) {
+                : gap +
+                    _advance(
+                      ayahMarkerText(w.ayahLabels[markerIndex]),
+                      style,
+                    ));
+        if (occupied > 0 && occupied + gap + advance > width) {
           row++;
           occupied = 0;
         }
-        occupied += advance;
+        occupied += (occupied > 0 ? gap : 0) + advance;
       }
       rows.putIfAbsent(row, () => []).add(_LineUnit.word(i));
       if (markerIndex != null) {
@@ -281,8 +289,10 @@ class _MushafRevealViewState extends State<MushafRevealView> {
             : w.fontSize * MushafRevealView.baseLineHeight * scale;
         final centeredWidth = w.centeredLines
             ? rows.values
-                .map((units) => units.fold<double>(
-                    0, (sum, unit) => sum + _advance(_unitText(unit), style)))
+                .map((units) =>
+                    units.fold<double>(0,
+                        (sum, unit) => sum + _advance(_unitText(unit), style)) +
+                    (units.length - 1) * _wordGap(style))
                 .reduce((a, b) => a > b ? a : b)
             : 0.0;
         final states = w.reviewMode
@@ -396,8 +406,13 @@ class _MushafRevealViewState extends State<MushafRevealView> {
     final w = widget;
     final children = <Widget>[];
     var naturalWidth = 0.0;
+    final gap = _wordGap(style);
     for (var n = 0; n < units.length; n++) {
       final unit = units[n];
+      if (n > 0) {
+        children.add(SizedBox(width: gap));
+        naturalWidth += gap;
+      }
       final text = _unitText(unit);
       final advance = _advance(text, style);
       naturalWidth += advance;
@@ -475,13 +490,24 @@ class _MushafRevealViewState extends State<MushafRevealView> {
 
   Widget _lineRule(Widget child) => DecoratedBox(
         decoration: BoxDecoration(
-            border: Border(
-                bottom: BorderSide(
           color: widget.mushaf.isDark
-              ? widget.mushaf.text.withValues(alpha: .045)
-              : Colors.transparent,
-          width: .5,
-        ))),
+              ? Colors.black.withValues(alpha: .025)
+              : null,
+          border: Border(
+            top: BorderSide(
+              color: widget.mushaf.isDark
+                  ? Colors.black.withValues(alpha: .30)
+                  : Colors.transparent,
+              width: .5,
+            ),
+            bottom: BorderSide(
+              color: widget.mushaf.isDark
+                  ? widget.mushaf.text.withValues(alpha: .04)
+                  : Colors.transparent,
+              width: .5,
+            ),
+          ),
+        ),
         child: child,
       );
 

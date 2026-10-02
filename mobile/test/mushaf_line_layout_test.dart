@@ -98,7 +98,7 @@ void main() {
     });
   }
 
-  testWidgets('adjacent word advances have no inserted layout gap',
+  testWidgets('small word gaps follow the font and whole-line transform',
       (tester) async {
     tester.view.physicalSize = const Size(360, 740);
     tester.view.devicePixelRatio = 1;
@@ -114,7 +114,17 @@ void main() {
     final second = units[1].renderObject! as RenderBox;
     final gap = first.localToGlobal(Offset.zero).dx -
         second.localToGlobal(Offset(second.size.width, 0)).dx;
-    expect(gap, closeTo(0, 0.1));
+    final painter = TextPainter(
+      text: TextSpan(
+          text: String.fromCharCode(0x20),
+          style: (units.first.widget as RichText).text.style),
+      textDirection: TextDirection.rtl,
+    )..layout();
+    final scale = first.getTransformTo(null).entry(0, 0);
+    expect(gap, closeTo(painter.width * .30 * scale, .1));
+    expect(gap, greaterThan(.5));
+    expect(gap, lessThan(3));
+    painter.dispose();
   });
 
   testWidgets('Arabic ink is 15 percent larger within unchanged line pitch',

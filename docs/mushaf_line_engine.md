@@ -3,8 +3,9 @@
 `MushafRevealView` now renders a Column of independent RTL lines. Each line
 contains a natural-width word row inside a FittedBox. The fitted transform
 maps the whole row to the available width and the printed row pitch. Word
-separation comes only from the Hafs glyph side bearings. No spacer widgets or
-text separators are inserted, and no available width is distributed into gaps.
+separation uses glyph side bearings plus 30% of the Hafs font's natural space
+advance. This small fixed gap preserves readability; no text separators or
+flexible spacers are inserted, and no available width is distributed into gaps.
 Visible Arabic ink is enlarged by 15% within the fixed row pitch by reducing
 the natural line leading from 1.55 to 1.55 / 1.15. Horizontal fitting retains
 the printed margins and text order. Opening rows share a single horizontal
@@ -29,7 +30,7 @@ production recitation pages always supply the bundled locations.
 
 The default recitation appearance uses charcoal paper, white verse markers,
 vivid Tajweed colours and an emerald gradient microphone with a soft halo.
-Dark pages have faint row rules and no enclosing page frame.
+Dark pages have faint dark row tiles with hairline rules and no enclosing page frame.
 Stored theme and Tajweed choices remain respected. The four paper presets are
 still available in appearance settings.
 
@@ -44,8 +45,8 @@ flutter test test/mushaf_in_place_test.dart test/mushaf_scroll_anchor_test.dart 
 ```
 
 The full-page suite checks all 604 pages against the viewport and controls.
-The line suite checks 320/360/430-pixel widths, flush row boundaries, zero added
-inter-word layout gaps, text/marker order, Hifz geometry, scaled cursor anchors and
+The line suite checks 320/360/430-pixel widths, flush row boundaries, small font-derived
+inter-word gaps, text/marker order, Hifz geometry, scaled cursor anchors and
 multiple-sheet ranges. For screenshots using real bundled fonts:
 
 ```sh
