@@ -117,6 +117,20 @@ void main() {
     expect(gap, closeTo(0, 0.1));
   });
 
+  testWidgets('Arabic ink is 15 percent larger within unchanged line pitch',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(page());
+    final first =
+        mushafParagraphElements(tester).first.renderObject! as RenderBox;
+    final transform = first.getTransformTo(null);
+    final oldScale = (560 / 15) / (32 * 1.55);
+    expect(transform.entry(1, 1), closeTo(oldScale * 1.15, 0.00001));
+    expect(tester.getSize(find.byType(MushafRevealView)).height, 560);
+  });
+
   testWidgets('scaled cursor and Hifz keep the same word geometry',
       (tester) async {
     final anchor = GlobalKey();

@@ -123,7 +123,10 @@ class MushafRevealView extends StatefulWidget {
     this.blockHeights = const {},
   });
 
-  static const double baseLineHeight = 1.55;
+  /// Increase visible Arabic ink by 15% within the fixed printed row pitch.
+  /// Changing fontSize alone is cancelled by the fitted line transform.
+  static const double glyphScale = 1.15;
+  static const double baseLineHeight = 1.55 / glyphScale;
 
   @override
   State<MushafRevealView> createState() => _MushafRevealViewState();

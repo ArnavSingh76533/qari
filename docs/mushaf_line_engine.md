@@ -5,6 +5,9 @@ contains a natural-width word row inside a FittedBox. The fitted transform
 maps the whole row to the available width and the printed row pitch. Word
 separation comes only from the Hafs glyph side bearings. No spacer widgets or
 text separators are inserted, and no available width is distributed into gaps.
+Visible Arabic ink is enlarged by 15% within the fixed row pitch by reducing
+the natural line leading from 1.55 to 1.55 / 1.15. Horizontal fitting retains
+the printed margins and text order.
 Tajweed spans, Hifz visibility, live verdicts, mistake taps and cursor anchors
 use the same geometry before and after a state update.
 
